@@ -6,7 +6,7 @@ pub mod git_dialog;
 pub mod find_bar;
 pub mod editor;
 
-use ratatui::{Frame, layout::{Constraint, Direction, Layout, Rect}};
+use ratatui::{Frame, layout::{Constraint, Direction, Layout}};
 
 use crate::app::state::{App, AppMode};
 
@@ -42,11 +42,12 @@ pub fn draw(f: &mut Frame, app: &App) {
     // Status bar
     status_bar::draw(f, app, status_area);
 
-    // Overlays
+    // Overlays / fullscreen modes
     match app.mode {
         AppMode::GitCommit => git_dialog::draw_commit(f, app),
         AppMode::GitPush => git_dialog::draw_push(f, app),
         AppMode::FindBar => find_bar::draw(f, app, status_area),
+        AppMode::Editor => editor::draw(f, app),
         _ => {}
     }
 }

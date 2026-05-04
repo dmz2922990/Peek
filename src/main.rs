@@ -1,10 +1,9 @@
 use std::io;
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
 use crossterm::{
-    event::{self, Event, MouseEvent},
+    event::{self, Event},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };

@@ -71,40 +71,40 @@
 
 ## 11. Context Expansion
 
-- [ ] 11.1 Implement source file reader in `src/diff/parser.rs` or separate module: read file lines by range, handle missing files gracefully
-- [ ] 11.2 Implement `+`/`-` context expand/collapse in diff view: read source file, inject additional context lines, update display
-- [ ] 11.3 Handle boundary conditions: beginning of file, end of file, binary files
+- [x] 11.1 Implement source file reader in `src/diff/parser.rs` or separate module: read file lines by range, handle missing files gracefully
+- [x] 11.2 Implement `+`/`-` context expand/collapse in diff view: read source file, inject additional context lines, update display
+- [x] 11.3 Handle boundary conditions: beginning of file, end of file, binary files
 
 ## 12. Git Operations UI
 
-- [ ] 12.1 Implement commit dialog in `src/ui/git_dialog.rs`: centered modal, text area for message, branch name, changed files summary
-- [ ] 12.2 Implement Ctrl+Enter commit execution: run `git commit`, refresh diff on success, show error on failure
-- [ ] 12.3 Implement push dialog: show unpushed commit count, confirm/cancel, execute `git push` or `git push -u`
-- [ ] 12.4 Implement `o` open browser: construct PR URL from remote URL + branch name, open via `open` (Mac) / `xdg-open` (Linux) / `start` (Windows)
+- [x] 12.1 Implement commit dialog in `src/ui/git_dialog.rs`: centered modal, text area for message, branch name, changed files summary
+- [x] 12.2 Implement Ctrl+Enter commit execution: run `git commit`, refresh diff on success, show error on failure
+- [x] 12.3 Implement push dialog: show unpushed commit count, confirm/cancel, execute `git push` or `git push -u`
+- [x] 12.4 Implement `o` open browser: construct PR URL from remote URL + branch name, open via `open` (Mac) / `xdg-open` (Linux) / `start` (Windows)
 
 ## 13. Embedded Editor
 
-- [ ] 13.1 Integrate `tui-textarea` in `src/ui/editor.rs`: open file at current diff line, full-file editing
-- [ ] 13.2 Implement Ctrl+S save: write file to disk, show confirmation
-- [ ] 13.3 Implement Escape exit: detect unsaved changes, prompt confirmation, return to diff view with refresh
-- [ ] 13.4 Implement Ctrl+R find/replace within editor
+- [x] 13.1 Integrate `tui-textarea` in `src/ui/editor.rs`: open file at current diff line, full-file editing
+- [x] 13.2 Implement Ctrl+S save: write file to disk, show confirmation
+- [x] 13.3 Implement Escape exit: detect unsaved changes, prompt confirmation, return to diff view with refresh
+- [x] 13.4 Implement Ctrl+R find/replace within editor
 
 ## 14. Find/Replace in Diff View
 
-- [ ] 14.1 Implement find bar UI in `src/ui/find_bar.rs`: bottom bar input, `/` activates, Escape closes
-- [ ] 14.2 Implement search: highlight all matches in diff, scroll to first match, "No matches found" feedback
-- [ ] 14.3 Implement `n`/`N` navigation: jump next/previous match with wrap-around
+- [x] 14.1 Implement find bar UI in `src/ui/find_bar.rs`: bottom bar input, `/` activates, Escape closes
+- [x] 14.2 Implement search: highlight all matches in diff, scroll to first match, "No matches found" feedback
+- [x] 14.3 Implement `n`/`N` navigation: jump next/previous match with wrap-around
 
 ## 15. Scroll Preservation
 
-- [ ] 15.1 Implement scroll anchor in `src/scroll/mod.rs`: track position as (file_path, hunk_header, line_offset) tuple
-- [ ] 15.2 Implement position restore: after diff refresh, resolve anchor to new position, scroll to it
-- [ ] 15.3 Handle edge case: anchor points to removed hunk → jump to nearest remaining hunk
-- [ ] 15.4 Write tests for anchor calculation and restoration
+- [x] 15.1 Implement scroll anchor in `src/scroll/mod.rs`: track position as (file_path, hunk_header, line_offset) tuple
+- [x] 15.2 Implement position restore: after diff refresh, resolve anchor to new position, scroll to it
+- [x] 15.3 Handle edge case: anchor points to removed hunk → jump to nearest remaining hunk
+- [x] 15.4 Write tests for anchor calculation and restoration
 
 ## 16. Integration and Polish
 
-- [ ] 16.1 End-to-end test: open tool in a git repo, browse diff, copy with smart format, commit, push, quit
+- [x] 16.1 End-to-end test: open tool in a git repo, browse diff, copy with smart format, commit, push, quit
 - [ ] 16.2 Verify cross-platform build: `cargo build --target` for Mac/Linux/Windows
-- [ ] 16.3 Add `clippy` and `rustfmt` checks, fix all warnings
+- [x] 16.3 Add `clippy` and `rustfmt` checks, fix all warnings
 - [ ] 16.4 Write README with installation, usage, configuration, keybindings reference

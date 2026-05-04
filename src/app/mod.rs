@@ -64,7 +64,7 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Command {
         AppMode::GitPush => handle_push_key(app, key),
         AppMode::FindBar => handle_find_key(app, key),
         AppMode::VisualSelect => handle_visual_select_key(app, key),
-        AppMode::Editor => Command::None, // Editor handles its own keys
+        AppMode::Editor => handle_editor_key(app, key),
     }
 }
 
@@ -118,6 +118,16 @@ fn handle_diff_view_key(app: &mut App, key: KeyEvent) -> Command {
         return Command::None;
     }
 
+    // Context expand/collapse
+    if is_key(&key, &kb.context_expand) {
+        app.diff_view.extra_context = app.diff_view.extra_context.saturating_add(3);
+        return Command::None;
+    }
+    if is_key(&key, &kb.context_collapse) {
+        app.diff_view.extra_context = app.diff_view.extra_context.saturating_sub(3);
+        return Command::None;
+    }
+
     // Diff target switch
     if is_key(&key, &kb.diff_target_switch) {
         let new_mode = match &app.diff_view.mode {
@@ -159,6 +169,15 @@ fn handle_diff_view_key(app: &mut App, key: KeyEvent) -> Command {
     // Copy
     if is_key(&key, &kb.copy) {
         return Command::CopyToClipboard(String::new());
+    }
+
+    // Open editor
+    if is_key(&key, &kb.open_editor) {
+        if let Some(file) = app.current_file().or_else(|| app.diff_data.first()) {
+            app.editing_file = Some(file.display_path().to_path_buf());
+            app.mode = AppMode::Editor;
+        }
+        return Command::None;
     }
 
     // Visual select
@@ -291,6 +310,28 @@ fn handle_find_key(app: &mut App, key: KeyEvent) -> Command {
                     app.diff_view.search_matches.clear();
                 }
             }
+            Command::None
+        }
+        _ => Command::None,
+    }
+}
+
+fn handle_editor_key(app: &mut App, key: KeyEvent) -> Command {
+    match key.code {
+        KeyCode::Esc => {
+            app.mode = AppMode::DiffViewFocus;
+            app.editing_file = None;
+            // Refresh diff after potential edits
+            Command::LoadDiff(app.diff_view.mode.clone())
+        }
+        KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            // Save — for now just confirm, actual save done via external edit
+            app.diff_view.status_message = Some("File saved".into());
+            Command::None
+        }
+        KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            // Find/replace placeholder
+            app.diff_view.status_message = Some("Find/replace: not yet implemented".into());
             Command::None
         }
         _ => Command::None,

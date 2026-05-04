@@ -44,6 +44,7 @@ pub struct DiffViewState {
     pub current_match: usize,
     pub commit_message: String,
     pub status_message: Option<String>,
+    pub extra_context: usize,
 }
 
 impl Default for DiffViewState {
@@ -59,6 +60,7 @@ impl Default for DiffViewState {
             current_match: 0,
             commit_message: String::new(),
             status_message: None,
+            extra_context: 0,
         }
     }
 }
