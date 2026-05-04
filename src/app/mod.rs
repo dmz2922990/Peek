@@ -18,6 +18,7 @@ pub fn update(app: &mut App, msg: Message) -> Command {
             app.diff_data = files;
             app.file_tree.selected = 0;
             app.diff_view.scroll = 0;
+            app.diff_view.cursor = 0;
             app.diff_view.status_message = None;
             Command::None
         }
@@ -80,41 +81,67 @@ fn handle_diff_view_key(app: &mut App, key: KeyEvent) -> Command {
     // Toggle file tree
     if is_key(&key, &kb.toggle_file_tree) {
         app.file_tree.visible = !app.file_tree.visible;
-        if app.file_tree.visible && app.mode == AppMode::DiffViewFocus {
-            app.mode = AppMode::FileTreeFocus;
+        return Command::None;
+    }
+
+    // Tab to switch to file tree
+    if matches!(key.code, KeyCode::Tab) && app.file_tree.visible {
+        app.mode = AppMode::FileTreeFocus;
+        return Command::None;
+    }
+
+    // Use viewport height written back by the renderer
+    let viewport = app.diff_view.viewport_height.max(1);
+
+    if is_key(&key, &kb.scroll_down) || matches!(key.code, KeyCode::Down) {
+        let max = app.diff_view.total_lines.saturating_sub(1);
+        if app.diff_view.cursor < max {
+            app.diff_view.cursor += 1;
+            if app.diff_view.cursor >= app.diff_view.scroll + viewport {
+                app.diff_view.scroll = app.diff_view.cursor + 1 - viewport;
+            }
+        }
+        return Command::None;
+    }
+    if is_key(&key, &kb.scroll_up) || matches!(key.code, KeyCode::Up) {
+        if app.diff_view.cursor > 0 {
+            app.diff_view.cursor -= 1;
+            if app.diff_view.cursor < app.diff_view.scroll {
+                app.diff_view.scroll = app.diff_view.cursor;
+            }
         }
         return Command::None;
     }
 
-    // Scroll
-    if is_key(&key, &kb.scroll_down) || matches!(key.code, KeyCode::Down) {
-        app.diff_view.scroll = app.diff_view.scroll.saturating_add(1);
-        return Command::None;
-    }
-    if is_key(&key, &kb.scroll_up) || matches!(key.code, KeyCode::Up) {
-        app.diff_view.scroll = app.diff_view.scroll.saturating_sub(1);
-        return Command::None;
-    }
-
-    // Half-page scroll
+    // Half-page scroll (Ctrl+D / Ctrl+U)
     if matches!(key.code, KeyCode::PageDown) {
-        let half = (app.size.1 as usize) / 2;
-        app.diff_view.scroll = app.diff_view.scroll.saturating_add(half);
+        let half = viewport / 2;
+        let max = app.diff_view.total_lines.saturating_sub(1);
+        app.diff_view.cursor = (app.diff_view.cursor + half).min(max);
+        app.diff_view.scroll = app.diff_view.scroll + half;
+        clamp_scroll(app, viewport);
         return Command::None;
     }
     if matches!(key.code, KeyCode::PageUp) {
-        let half = (app.size.1 as usize) / 2;
+        let half = viewport / 2;
+        app.diff_view.cursor = app.diff_view.cursor.saturating_sub(half);
         app.diff_view.scroll = app.diff_view.scroll.saturating_sub(half);
+        if app.diff_view.scroll > app.diff_view.cursor {
+            app.diff_view.scroll = app.diff_view.cursor;
+        }
         return Command::None;
     }
 
     // Jump to top/bottom
     if matches!(key.code, KeyCode::Char('g')) {
+        app.diff_view.cursor = 0;
         app.diff_view.scroll = 0;
         return Command::None;
     }
     if matches!(key.code, KeyCode::Char('G')) {
-        app.diff_view.scroll = usize::MAX;
+        let max = app.diff_view.total_lines.saturating_sub(1);
+        app.diff_view.cursor = max;
+        app.diff_view.scroll = max.saturating_sub(viewport);
         return Command::None;
     }
 
@@ -220,6 +247,7 @@ fn handle_file_tree_key(app: &mut App, key: KeyEvent) -> Command {
             app.mode = AppMode::DiffViewFocus;
             app.diff_view.selected_file = Some(app.file_tree.selected);
             app.diff_view.scroll = 0;
+            app.diff_view.cursor = 0;
             Command::None
         }
         KeyCode::Tab => {
@@ -313,6 +341,13 @@ fn handle_find_key(app: &mut App, key: KeyEvent) -> Command {
             Command::None
         }
         _ => Command::None,
+    }
+}
+
+fn clamp_scroll(app: &mut App, viewport: usize) {
+    let max_scroll = app.diff_view.total_lines.saturating_sub(viewport);
+    if app.diff_view.scroll > max_scroll {
+        app.diff_view.scroll = max_scroll;
     }
 }
 

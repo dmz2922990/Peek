@@ -49,7 +49,7 @@ async fn main() -> Result<()> {
     // Main loop
     loop {
         // Render
-        terminal.draw(|f| ui::draw(f, &app))?;
+        terminal.draw(|f| ui::draw(f, &mut app))?;
 
         // Handle async messages (non-blocking)
         while let Ok(msg) = rx.try_recv() {
@@ -59,9 +59,16 @@ async fn main() -> Result<()> {
 
         // Poll terminal events
         if event::poll(Duration::from_millis(100))? {
-            if let Event::Key(key) = event::read()? {
-                let cmd = app::update(&mut app, Message::Key(key));
-                execute_command(cmd, &tx).await;
+            match event::read()? {
+                Event::Key(key) => {
+                    let cmd = app::update(&mut app, Message::Key(key));
+                    execute_command(cmd, &tx).await;
+                }
+                Event::Resize(w, h) => {
+                    let cmd = app::update(&mut app, Message::Resize(w, h));
+                    execute_command(cmd, &tx).await;
+                }
+                _ => {}
             }
         }
 

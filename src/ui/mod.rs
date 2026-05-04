@@ -10,7 +10,7 @@ use ratatui::{Frame, layout::{Constraint, Direction, Layout}};
 
 use crate::app::state::{App, AppMode};
 
-pub fn draw(f: &mut Frame, app: &App) {
+pub fn draw(f: &mut Frame, app: &mut App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -33,10 +33,13 @@ pub fn draw(f: &mut Frame, app: &App) {
             ])
             .split(main_area);
 
-        file_tree::draw(f, app, main_chunks[0]);
-        diff_view::draw(f, app, main_chunks[1]);
+        let file_focused = matches!(app.mode, AppMode::FileTreeFocus);
+        let diff_focused = matches!(app.mode, AppMode::DiffViewFocus | AppMode::VisualSelect);
+
+        file_tree::draw(f, app, main_chunks[0], file_focused);
+        diff_view::draw(f, app, main_chunks[1], diff_focused);
     } else {
-        diff_view::draw(f, app, main_area);
+        diff_view::draw(f, app, main_area, true);
     }
 
     // Status bar

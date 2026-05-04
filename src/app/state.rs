@@ -35,6 +35,7 @@ impl Default for FileTreeState {
 #[derive(Debug, Clone)]
 pub struct DiffViewState {
     pub scroll: usize,
+    pub cursor: usize,
     pub mode: DiffMode,
     pub selected_file: Option<usize>,
     pub selection_start: Option<usize>,
@@ -45,12 +46,15 @@ pub struct DiffViewState {
     pub commit_message: String,
     pub status_message: Option<String>,
     pub extra_context: usize,
+    pub total_lines: usize,
+    pub viewport_height: usize,
 }
 
 impl Default for DiffViewState {
     fn default() -> Self {
         Self {
             scroll: 0,
+            cursor: 0,
             mode: DiffMode::Head,
             selected_file: None,
             selection_start: None,
@@ -61,6 +65,8 @@ impl Default for DiffViewState {
             commit_message: String::new(),
             status_message: None,
             extra_context: 0,
+            total_lines: 0,
+            viewport_height: 0,
         }
     }
 }

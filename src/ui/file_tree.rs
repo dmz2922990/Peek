@@ -9,7 +9,7 @@ use ratatui::{
 use crate::app::state::App;
 use crate::diff::types::FileStatus;
 
-pub fn draw(f: &mut Frame, app: &App, area: Rect) {
+pub fn draw(f: &mut Frame, app: &App, area: Rect, focused: bool) {
     let items: Vec<ListItem> = app.diff_data.iter().map(|file| {
         let (indicator, color) = match file.status {
             FileStatus::Added => ("+", Color::Green),
@@ -31,9 +31,25 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
         ListItem::new(line)
     }).collect();
 
+    let border_style = if focused {
+        Style::default().fg(Color::Cyan)
+    } else {
+        Style::default().fg(Color::DarkGray)
+    };
+
+    let title = if focused {
+        " Files ▸ "
+    } else {
+        " Files "
+    };
+
     let list = List::new(items)
-        .block(Block::default().borders(Borders::RIGHT).title("Files"))
-        .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
+        .block(Block::default().borders(Borders::RIGHT).title(title).border_style(border_style))
+        .highlight_style(
+            Style::default()
+                .bg(Color::DarkGray)
+                .add_modifier(Modifier::BOLD)
+        );
 
     let mut state = ListState::default();
     state.select(Some(app.file_tree.selected));
