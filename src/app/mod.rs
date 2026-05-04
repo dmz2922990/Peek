@@ -49,6 +49,13 @@ pub fn update(app: &mut App, msg: Message) -> Command {
             app.config = config;
             Command::None
         }
+        Message::FileChanged => {
+            if matches!(app.mode, AppMode::GitCommit | AppMode::GitPush | AppMode::Help) {
+                Command::None
+            } else {
+                Command::LoadDiff(app.diff_view.mode.clone())
+            }
+        }
         Message::Tick => Command::None,
         Message::Mouse(_) => Command::None,
     }

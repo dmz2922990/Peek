@@ -12,6 +12,7 @@ toml = "0.8"
 tui-textarea = "0.7"
 arboard = "3"
 anyhow = "1"
+notify = "6"
 
 [dev-dependencies]
 tempfile = "3"

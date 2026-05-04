@@ -276,7 +276,7 @@ fn make_diff_line(dl: &DiffLine) -> Line<'static> {
 fn make_expanded_context_line(content: &str, old_line: usize, new_line: usize) -> Line<'static> {
     Line::from(vec![
         Span::styled(format!(" {:>4} {:>4} ", old_line, new_line), Style::default().fg(Color::Blue)),
-        Span::styled(format!(" {}", content), Style::default().fg(Color::Blue).add_modifier(Modifier::DIM)),
+        Span::styled(format!(" {}", content), Style::default().fg(Color::White).add_modifier(Modifier::DIM)),
     ])
 }
 

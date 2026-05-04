@@ -12,6 +12,7 @@ pub enum Message {
     GitCommandDone(Result<String, String>),
     ClipboardCopyDone,
     ConfigLoaded(crate::config::types::Config),
+    FileChanged,
     Tick,
 }
 
