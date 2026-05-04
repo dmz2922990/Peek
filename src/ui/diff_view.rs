@@ -43,7 +43,8 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
     };
 
     let mut lines: Vec<Line> = Vec::new();
-    let mut line_map: Vec<Option<(usize, usize)>> = Vec::new();
+    // (hunk_idx, Some(line_idx)) = diff line, (hunk_idx, None) = expanded context, None = header
+    let mut line_map: Vec<Option<(usize, Option<usize>)>> = Vec::new();
 
     // File header
     lines.push(Line::from(Span::styled(
@@ -57,13 +58,21 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
     )));
     line_map.push(None);
 
+    // Use the locked expansion target from state (set by = key, not computed per frame)
+    let expand_target = app.diff_view.expand_hunk;
+
     // Load source file for context expansion
     let source_lines = load_source_lines(&file.new_path);
     let extra = app.diff_view.extra_context;
 
     for (hunk_idx, hunk) in file.hunks.iter().enumerate() {
+        // Only expand context near the locked target hunk (± 1)
+        let expand_this = extra > 0 && expand_target.map_or(false, |et| {
+            hunk_idx >= et.saturating_sub(1) && hunk_idx <= et + 1
+        });
+
         // Inject extra context before hunk (between hunks)
-        if extra > 0 {
+        if expand_this {
             let prev_hunk_end = if hunk_idx == 0 {
                 1
             } else {
@@ -78,7 +87,7 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
                 for line_no in start..current_hunk_start {
                     if let Some(content) = get_source_line(&source_lines, line_no) {
                         lines.push(make_expanded_context_line(&content, line_no + prev_hunk_end.saturating_sub(1), line_no));
-                        line_map.push(None);
+                        line_map.push(Some((hunk_idx, None))); // associate with this hunk
                     }
                 }
                 if gap > expand_count {
@@ -86,7 +95,7 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
                         format!("  ... ({} lines hidden)", gap.saturating_sub(expand_count)),
                         Style::default().fg(Color::DarkGray),
                     )));
-                    line_map.push(None);
+                    line_map.push(Some((hunk_idx, None)));
                 }
             }
         }
@@ -105,24 +114,24 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
 
         for (line_idx, dl) in hunk.lines.iter().enumerate() {
             lines.push(make_diff_line(dl));
-            line_map.push(Some((hunk_idx, line_idx)));
+            line_map.push(Some((hunk_idx, Some(line_idx))));
         }
 
         // Inject extra context after last hunk
-        if extra > 0 && hunk_idx == file.hunks.len() - 1 {
+        if expand_this && hunk_idx == file.hunks.len() - 1 {
             let after_start = hunk.new_start + hunk.new_count;
             for offset in 0..extra {
                 let line_no = after_start + offset;
                 if let Some(content) = get_source_line(&source_lines, line_no) {
                     lines.push(make_expanded_context_line(&content, line_no, line_no));
-                    line_map.push(None);
+                    line_map.push(Some((hunk_idx, None)));
                 }
             }
         }
     }
 
     // Context indicator
-    if extra > 0 {
+    if extra > 0 && expand_target.is_some() {
         lines.push(Line::from(Span::styled(
             format!("  [context expanded: +{} lines]", extra),
             Style::default().fg(Color::Yellow),

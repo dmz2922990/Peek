@@ -34,7 +34,7 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
     }
 
     let hint = match app.mode {
-        _ => " q:quit j/k:scroll c:commit p:push o:PR /:find y:copy v:select Ctrl+T:tree",
+        _ => " q:quit j/k:scroll =/-:context c:commit p:push o:PR /:find y:copy v:select Ctrl+T:tree",
     };
     spans.push(Span::styled(hint.to_string(), Style::default().fg(Color::DarkGray)));
 

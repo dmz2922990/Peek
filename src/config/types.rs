@@ -100,7 +100,7 @@ fn default_open_pr() -> String { "o".into() }
 fn default_find() -> String { "/".into() }
 fn default_copy() -> String { "y".into() }
 fn default_visual_select() -> String { "v".into() }
-fn default_context_expand() -> String { "+".into() }
+fn default_context_expand() -> String { "=".into() }
 fn default_context_collapse() -> String { "-".into() }
 fn default_diff_target_switch() -> String { "S".into() }
 fn default_context_lines() -> usize { 3 }

@@ -48,8 +48,11 @@ pub struct DiffViewState {
     pub extra_context: usize,
     pub total_lines: usize,
     pub viewport_height: usize,
-    /// Maps each rendered line index to (hunk_idx, line_idx_within_hunk), or None for headers/expanded context
-    pub rendered_line_map: Vec<Option<(usize, usize)>>,
+    /// Maps each rendered line index to (hunk_idx, Some(line_idx)) for diff lines,
+    /// (hunk_idx, None) for expanded context, or None for headers/indicators
+    pub rendered_line_map: Vec<Option<(usize, Option<usize>)>>,
+    /// Which hunk to expand context around, set when user presses =
+    pub expand_hunk: Option<usize>,
 }
 
 impl Default for DiffViewState {
@@ -70,6 +73,7 @@ impl Default for DiffViewState {
             total_lines: 0,
             viewport_height: 0,
             rendered_line_map: Vec::new(),
+            expand_hunk: None,
         }
     }
 }

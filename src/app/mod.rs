@@ -19,6 +19,8 @@ pub fn update(app: &mut App, msg: Message) -> Command {
             app.file_tree.selected = 0;
             app.diff_view.scroll = 0;
             app.diff_view.cursor = 0;
+            app.diff_view.expand_hunk = None;
+            app.diff_view.extra_context = 0;
             app.diff_view.status_message = None;
             Command::None
         }
@@ -147,11 +149,18 @@ fn handle_diff_view_key(app: &mut App, key: KeyEvent) -> Command {
 
     // Context expand/collapse
     if is_key(&key, &kb.context_expand) {
+        // Always update expansion target to cursor's current hunk
+        if let Some(Some((hunk_idx, _))) = app.diff_view.rendered_line_map.get(app.diff_view.cursor) {
+            app.diff_view.expand_hunk = Some(*hunk_idx);
+        }
         app.diff_view.extra_context = app.diff_view.extra_context.saturating_add(3);
         return Command::None;
     }
     if is_key(&key, &kb.context_collapse) {
         app.diff_view.extra_context = app.diff_view.extra_context.saturating_sub(3);
+        if app.diff_view.extra_context == 0 {
+            app.diff_view.expand_hunk = None;
+        }
         return Command::None;
     }
 
@@ -248,6 +257,8 @@ fn handle_file_tree_key(app: &mut App, key: KeyEvent) -> Command {
             app.diff_view.selected_file = Some(app.file_tree.selected);
             app.diff_view.scroll = 0;
             app.diff_view.cursor = 0;
+            app.diff_view.expand_hunk = None;
+            app.diff_view.extra_context = 0;
             Command::None
         }
         KeyCode::Tab => {
@@ -421,7 +432,8 @@ fn copy_cursor_line(app: &mut App) -> Command {
     let cursor = app.diff_view.cursor;
     let map = &app.diff_view.rendered_line_map;
 
-    let Some(&Some((hunk_idx, line_idx))) = map.get(cursor) else {
+    // Only copy actual diff lines (Some(hunk_idx, Some(line_idx)))
+    let Some(&Some((hunk_idx, Some(line_idx)))) = map.get(cursor) else {
         app.diff_view.status_message = Some("Nothing to copy here".into());
         return Command::None;
     };
@@ -454,11 +466,11 @@ fn copy_selection_range(app: &mut App) -> Command {
     let hi = start_idx.max(end_idx);
     let map = &app.diff_view.rendered_line_map;
 
-    // Collect all (hunk_idx, line_idx) pairs in the selection
+    // Collect all (hunk_idx, line_idx) pairs in the selection (only actual diff lines)
     let mut entries: Vec<(usize, usize)> = Vec::new();
     for i in lo..=hi {
-        if let Some(Some(entry)) = map.get(i) {
-            entries.push(*entry);
+        if let Some(Some((hunk_idx, Some(line_idx)))) = map.get(i) {
+            entries.push((*hunk_idx, *line_idx));
         }
     }
 
@@ -510,23 +522,51 @@ fn line_number_from_idx(hunk: &crate::diff::types::Hunk, line_idx: usize) -> usi
 
 fn is_key(event: &KeyEvent, binding: &str) -> bool {
     let lowered = binding.to_lowercase();
-    let parts: Vec<&str> = lowered.split('+').collect();
 
+    // Parse modifiers and key from binding string (e.g. "ctrl+j", "alt+x")
     let mut expected_ctrl = false;
     let mut expected_alt = false;
     let mut expected_char: Option<char> = None;
 
-    for part in parts {
-        match part {
-            "ctrl" => expected_ctrl = true,
-            "alt" => expected_alt = true,
-            "tab" if expected_char.is_none() => {
-                return event.code == KeyCode::Tab
-                    && event.modifiers.contains(KeyModifiers::CONTROL) == expected_ctrl
-                    && event.modifiers.contains(KeyModifiers::ALT) == expected_alt;
+    let mut remaining = lowered.as_str();
+    loop {
+        if let Some(rest) = remaining.strip_prefix("ctrl+") {
+            if rest.is_empty() {
+                // Binding was just "ctrl+" — treat "+" as the key
+                expected_ctrl = true;
+                expected_char = Some('+');
+                break;
             }
-            c if c.len() == 1 => expected_char = Some(c.chars().next().unwrap()),
-            _ => {}
+            expected_ctrl = true;
+            remaining = rest;
+        } else if let Some(rest) = remaining.strip_prefix("alt+") {
+            if rest.is_empty() {
+                expected_alt = true;
+                expected_char = Some('+');
+                break;
+            }
+            expected_alt = true;
+            remaining = rest;
+        } else {
+            break;
+        }
+    }
+
+    if expected_char.is_none() {
+        if remaining == "tab" {
+            return event.code == KeyCode::Tab
+                && event.modifiers.contains(KeyModifiers::CONTROL) == expected_ctrl
+                && event.modifiers.contains(KeyModifiers::ALT) == expected_alt;
+        } else if remaining == "enter" {
+            return event.code == KeyCode::Enter
+                && event.modifiers.contains(KeyModifiers::CONTROL) == expected_ctrl
+                && event.modifiers.contains(KeyModifiers::ALT) == expected_alt;
+        } else if remaining == "esc" {
+            return event.code == KeyCode::Esc
+                && event.modifiers.contains(KeyModifiers::CONTROL) == expected_ctrl
+                && event.modifiers.contains(KeyModifiers::ALT) == expected_alt;
+        } else if remaining.len() == 1 {
+            expected_char = Some(remaining.chars().next().unwrap());
         }
     }
 
