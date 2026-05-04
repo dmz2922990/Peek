@@ -193,9 +193,9 @@ fn handle_diff_view_key(app: &mut App, key: KeyEvent) -> Command {
         return Command::None;
     }
 
-    // Copy
+    // Copy current line
     if is_key(&key, &kb.copy) {
-        return Command::CopyToClipboard(String::new());
+        return copy_cursor_line(app);
     }
 
     // Open editor
@@ -210,8 +210,8 @@ fn handle_diff_view_key(app: &mut App, key: KeyEvent) -> Command {
     // Visual select
     if is_key(&key, &kb.visual_select) {
         app.mode = AppMode::VisualSelect;
-        app.diff_view.selection_start = Some(app.diff_view.scroll);
-        app.diff_view.selection_end = Some(app.diff_view.scroll);
+        app.diff_view.selection_start = Some(app.diff_view.cursor);
+        app.diff_view.selection_end = Some(app.diff_view.cursor);
         return Command::None;
     }
 
@@ -375,6 +375,7 @@ fn handle_editor_key(app: &mut App, key: KeyEvent) -> Command {
 
 fn handle_visual_select_key(app: &mut App, key: KeyEvent) -> Command {
     let kb = &app.config.keybindings;
+    let viewport = app.diff_view.viewport_height.max(1);
 
     if matches!(key.code, KeyCode::Esc) {
         app.mode = AppMode::DiffViewFocus;
@@ -383,22 +384,128 @@ fn handle_visual_select_key(app: &mut App, key: KeyEvent) -> Command {
         return Command::None;
     }
 
-    if is_key(&key, &kb.copy) || is_key(&key, &kb.scroll_down) {
-        app.diff_view.selection_end = Some(app.diff_view.scroll);
-        if is_key(&key, &kb.copy) {
-            return Command::CopyToClipboard(String::new());
+    // Yank (copy) selection
+    if is_key(&key, &kb.copy) {
+        return copy_selection_range(app);
+    }
+
+    // Move down — extend selection
+    if is_key(&key, &kb.scroll_down) || matches!(key.code, KeyCode::Down) {
+        let max = app.diff_view.total_lines.saturating_sub(1);
+        if app.diff_view.cursor < max {
+            app.diff_view.cursor += 1;
+            app.diff_view.selection_end = Some(app.diff_view.cursor);
+            if app.diff_view.cursor >= app.diff_view.scroll + viewport {
+                app.diff_view.scroll = app.diff_view.cursor + 1 - viewport;
+            }
         }
-        app.diff_view.scroll = app.diff_view.scroll.saturating_add(1);
         return Command::None;
     }
 
-    if is_key(&key, &kb.scroll_up) {
-        app.diff_view.selection_end = Some(app.diff_view.scroll);
-        app.diff_view.scroll = app.diff_view.scroll.saturating_sub(1);
+    // Move up — extend selection
+    if is_key(&key, &kb.scroll_up) || matches!(key.code, KeyCode::Up) {
+        if app.diff_view.cursor > 0 {
+            app.diff_view.cursor -= 1;
+            app.diff_view.selection_end = Some(app.diff_view.cursor);
+            if app.diff_view.cursor < app.diff_view.scroll {
+                app.diff_view.scroll = app.diff_view.cursor;
+            }
+        }
         return Command::None;
     }
 
     Command::None
+}
+
+fn copy_cursor_line(app: &mut App) -> Command {
+    let cursor = app.diff_view.cursor;
+    let map = &app.diff_view.rendered_line_map;
+
+    let Some(&Some((hunk_idx, line_idx))) = map.get(cursor) else {
+        app.diff_view.status_message = Some("Nothing to copy here".into());
+        return Command::None;
+    };
+
+    let file = match app.current_file().or_else(|| app.diff_data.first()) {
+        Some(f) => f,
+        None => return Command::None,
+    };
+
+    if let Some(hunk) = file.hunks.get(hunk_idx) {
+        let content = crate::clipboard::smart_copy::format_single_line_copy(file, hunk, line_idx);
+        if content.is_empty() {
+            app.diff_view.status_message = Some("Nothing to copy here".into());
+            return Command::None;
+        }
+        return Command::CopyToClipboard(content);
+    }
+
+    Command::None
+}
+
+fn copy_selection_range(app: &mut App) -> Command {
+    let start = app.diff_view.selection_start;
+    let end = app.diff_view.selection_end;
+
+    let Some(start_idx) = start else { return Command::None };
+    let Some(end_idx) = end else { return Command::None };
+
+    let lo = start_idx.min(end_idx);
+    let hi = start_idx.max(end_idx);
+    let map = &app.diff_view.rendered_line_map;
+
+    // Collect all (hunk_idx, line_idx) pairs in the selection
+    let mut entries: Vec<(usize, usize)> = Vec::new();
+    for i in lo..=hi {
+        if let Some(Some(entry)) = map.get(i) {
+            entries.push(*entry);
+        }
+    }
+
+    if entries.is_empty() {
+        app.diff_view.status_message = Some("No diff lines in selection".into());
+        return Command::None;
+    }
+
+    let file = match app.current_file().or_else(|| app.diff_data.first()) {
+        Some(f) => f,
+        None => return Command::None,
+    };
+
+    // Determine the range of hunks and line numbers involved
+    let first = entries[0];
+    let last = entries[entries.len() - 1];
+
+    let content = if first.0 == last.0 {
+        // Single hunk
+        let hunk = &file.hunks[first.0];
+        crate::clipboard::smart_copy::format_smart_copy(
+            file, &file.hunks[first.0..=first.0],
+            line_number_from_idx(hunk, first.1),
+            line_number_from_idx(hunk, last.1),
+        )
+    } else {
+        // Multiple hunks — collect them
+        let min_hunk = first.0;
+        let max_hunk = last.0;
+        let start_line = line_number_from_idx(&file.hunks[min_hunk], first.1);
+        let end_line = line_number_from_idx(&file.hunks[max_hunk], last.1);
+        crate::clipboard::smart_copy::format_smart_copy(
+            file, &file.hunks[min_hunk..=max_hunk],
+            start_line, end_line,
+        )
+    };
+
+    Command::CopyToClipboard(content)
+}
+
+fn line_number_from_idx(hunk: &crate::diff::types::Hunk, line_idx: usize) -> usize {
+    match hunk.lines.get(line_idx) {
+        Some(crate::diff::types::DiffLine::Context { new_line, .. }) => *new_line,
+        Some(crate::diff::types::DiffLine::Add { new_line, .. }) => *new_line,
+        Some(crate::diff::types::DiffLine::Delete { old_line, .. }) => *old_line,
+        None => 0,
+    }
 }
 
 fn is_key(event: &KeyEvent, binding: &str) -> bool {

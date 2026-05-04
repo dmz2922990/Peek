@@ -48,6 +48,8 @@ pub struct DiffViewState {
     pub extra_context: usize,
     pub total_lines: usize,
     pub viewport_height: usize,
+    /// Maps each rendered line index to (hunk_idx, line_idx_within_hunk), or None for headers/expanded context
+    pub rendered_line_map: Vec<Option<(usize, usize)>>,
 }
 
 impl Default for DiffViewState {
@@ -67,6 +69,7 @@ impl Default for DiffViewState {
             extra_context: 0,
             total_lines: 0,
             viewport_height: 0,
+            rendered_line_map: Vec::new(),
         }
     }
 }

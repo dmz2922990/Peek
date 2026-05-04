@@ -9,7 +9,7 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph},
 };
 
-use crate::app::state::App;
+use crate::app::state::{App, AppMode};
 use crate::diff::types::DiffLine;
 
 pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
@@ -19,10 +19,10 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
         Style::default().fg(Color::DarkGray)
     };
 
-    let title = if focused {
-        " Diff ◂ "
-    } else {
-        " Diff "
+    let title = match app.mode {
+        AppMode::VisualSelect => " VISUAL ",
+        _ if focused => " Diff ◂ ",
+        _ => " Diff ",
     };
 
     let block = Block::default()
@@ -43,16 +43,19 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
     };
 
     let mut lines: Vec<Line> = Vec::new();
+    let mut line_map: Vec<Option<(usize, usize)>> = Vec::new();
 
     // File header
     lines.push(Line::from(Span::styled(
         format!("--- {}", file.old_path.display()),
         Style::default().fg(Color::DarkGray),
     )));
+    line_map.push(None);
     lines.push(Line::from(Span::styled(
         format!("+++ {}", file.new_path.display()),
         Style::default().fg(Color::DarkGray),
     )));
+    line_map.push(None);
 
     // Load source file for context expansion
     let source_lines = load_source_lines(&file.new_path);
@@ -75,6 +78,7 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
                 for line_no in start..current_hunk_start {
                     if let Some(content) = get_source_line(&source_lines, line_no) {
                         lines.push(make_expanded_context_line(&content, line_no + prev_hunk_end.saturating_sub(1), line_no));
+                        line_map.push(None);
                     }
                 }
                 if gap > expand_count {
@@ -82,6 +86,7 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
                         format!("  ... ({} lines hidden)", gap.saturating_sub(expand_count)),
                         Style::default().fg(Color::DarkGray),
                     )));
+                    line_map.push(None);
                 }
             }
         }
@@ -96,9 +101,11 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
             header_text,
             Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
         )));
+        line_map.push(None);
 
-        for dl in &hunk.lines {
+        for (line_idx, dl) in hunk.lines.iter().enumerate() {
             lines.push(make_diff_line(dl));
+            line_map.push(Some((hunk_idx, line_idx)));
         }
 
         // Inject extra context after last hunk
@@ -108,6 +115,7 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
                 let line_no = after_start + offset;
                 if let Some(content) = get_source_line(&source_lines, line_no) {
                     lines.push(make_expanded_context_line(&content, line_no, line_no));
+                    line_map.push(None);
                 }
             }
         }
@@ -119,11 +127,13 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
             format!("  [context expanded: +{} lines]", extra),
             Style::default().fg(Color::Yellow),
         )));
+        line_map.push(None);
     }
 
-    // Write actual total back so key handler stays in sync
+    // Write state back for key handler
     let total_lines = lines.len();
     app.diff_view.total_lines = total_lines;
+    app.diff_view.rendered_line_map = line_map;
 
     let viewport_height = area.height.saturating_sub(1) as usize;
     app.diff_view.viewport_height = viewport_height;
@@ -148,18 +158,39 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
 
     let cursor_line = app.diff_view.cursor;
 
+    // Compute visual select range
+    let sel_range = if app.mode == AppMode::VisualSelect {
+        app.diff_view.selection_start.and_then(|start| {
+            app.diff_view.selection_end.map(|end| {
+                let lo = start.min(end);
+                let hi = start.max(end);
+                (lo, hi)
+            })
+        })
+    } else {
+        None
+    };
+
     let visible_lines: Vec<Line> = lines
         .into_iter()
         .enumerate()
         .skip(app.diff_view.scroll)
         .take(viewport_height)
         .map(|(idx, mut line)| {
-            if focused && idx == cursor_line {
+            let is_cursor = focused && idx == cursor_line;
+            let is_selected = sel_range.map_or(false, |(lo, hi)| idx >= lo && idx <= hi);
+
+            if is_cursor {
                 let mut new_spans = vec![
                     Span::styled("▸", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
                 ];
                 new_spans.append(&mut line.spans);
-                Line::from(new_spans).patch_style(Style::default().bg(Color::DarkGray))
+                let bg = if is_selected { Color::Rgb(60, 60, 100) } else { Color::DarkGray };
+                Line::from(new_spans).patch_style(Style::default().bg(bg))
+            } else if is_selected {
+                Line::from(
+                    std::mem::take(&mut line.spans)
+                ).patch_style(Style::default().bg(Color::Rgb(40, 40, 80)))
             } else {
                 line
             }
