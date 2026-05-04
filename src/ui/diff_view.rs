@@ -43,8 +43,9 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
     };
 
     let mut lines: Vec<Line> = Vec::new();
-    // (hunk_idx, Some(line_idx)) = diff line, (hunk_idx, None) = expanded context, None = header
+    // (hunk_idx, Some(line_idx)) = diff line, (hunk_idx, None) = expanded context, None = header/fold
     let mut line_map: Vec<Option<(usize, Option<usize>)>> = Vec::new();
+    let mut fold_positions: Vec<(usize, usize)> = Vec::new();
 
     // File header
     lines.push(Line::from(Span::styled(
@@ -71,32 +72,39 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
             hunk_idx >= et.saturating_sub(1) && hunk_idx <= et + 1
         });
 
-        // Inject extra context before hunk (between hunks)
-        if expand_this {
-            let prev_hunk_end = if hunk_idx == 0 {
-                1
-            } else {
-                file.hunks[hunk_idx - 1].new_start + file.hunks[hunk_idx - 1].new_count
-            };
-            let current_hunk_start = hunk.new_start;
-            let gap = current_hunk_start.saturating_sub(prev_hunk_end);
+        // ── Fold indicator / expanded context before hunk ──
+        let prev_hunk_end = if hunk_idx == 0 {
+            1
+        } else {
+            file.hunks[hunk_idx - 1].new_start + file.hunks[hunk_idx - 1].new_count
+        };
+        let current_hunk_start = hunk.new_start;
+        let gap = current_hunk_start.saturating_sub(prev_hunk_end);
 
-            if gap > 0 {
+        if gap > 0 {
+            if expand_this {
+                // Fold for remaining hidden lines (at top), then expanded context below
                 let expand_count = gap.min(extra);
+                let remaining = gap.saturating_sub(expand_count);
+                if remaining > 0 {
+                    let fold_idx = lines.len();
+                    lines.push(make_fold_line(remaining));
+                    line_map.push(None);
+                    fold_positions.push((fold_idx, hunk_idx));
+                }
                 let start = current_hunk_start.saturating_sub(expand_count);
                 for line_no in start..current_hunk_start {
                     if let Some(content) = get_source_line(&source_lines, line_no) {
-                        lines.push(make_expanded_context_line(&content, line_no + prev_hunk_end.saturating_sub(1), line_no));
-                        line_map.push(Some((hunk_idx, None))); // associate with this hunk
+                        lines.push(make_expanded_context_line(&content, line_no, line_no));
+                        line_map.push(Some((hunk_idx, None)));
                     }
                 }
-                if gap > expand_count {
-                    lines.push(Line::from(Span::styled(
-                        format!("  ... ({} lines hidden)", gap.saturating_sub(expand_count)),
-                        Style::default().fg(Color::DarkGray),
-                    )));
-                    line_map.push(Some((hunk_idx, None)));
-                }
+            } else {
+                // Show fold indicator for full gap
+                let fold_idx = lines.len();
+                lines.push(make_fold_line(gap));
+                line_map.push(None);
+                fold_positions.push((fold_idx, hunk_idx));
             }
         }
 
@@ -117,32 +125,51 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
             line_map.push(Some((hunk_idx, Some(line_idx))));
         }
 
-        // Inject extra context after last hunk
-        if expand_this && hunk_idx == file.hunks.len() - 1 {
+        // ── Fold / expanded context after last hunk ──
+        if hunk_idx == file.hunks.len() - 1 {
             let after_start = hunk.new_start + hunk.new_count;
-            for offset in 0..extra {
-                let line_no = after_start + offset;
-                if let Some(content) = get_source_line(&source_lines, line_no) {
-                    lines.push(make_expanded_context_line(&content, line_no, line_no));
-                    line_map.push(Some((hunk_idx, None)));
+            let total_file_lines = source_lines.len();
+            let tail_gap = total_file_lines.saturating_sub(after_start);
+
+            if tail_gap > 0 {
+                if app.diff_view.expand_tail && extra > 0 {
+                    let expand_count = tail_gap.min(extra);
+                    for offset in 0..expand_count {
+                        let line_no = after_start + offset;
+                        if let Some(content) = get_source_line(&source_lines, line_no) {
+                            lines.push(make_expanded_context_line(&content, line_no, line_no));
+                            line_map.push(Some((hunk_idx, None)));
+                        }
+                    }
+                    let remaining = tail_gap.saturating_sub(expand_count);
+                    if remaining > 0 {
+                        let fold_idx = lines.len();
+                        lines.push(make_fold_line(remaining));
+                        line_map.push(None);
+                        fold_positions.push((fold_idx, usize::MAX));
+                    }
+                } else {
+                    let fold_idx = lines.len();
+                    lines.push(make_fold_line(tail_gap));
+                    line_map.push(None);
+                    fold_positions.push((fold_idx, usize::MAX));
                 }
             }
         }
-    }
-
-    // Context indicator
-    if extra > 0 && expand_target.is_some() {
-        lines.push(Line::from(Span::styled(
-            format!("  [context expanded: +{} lines]", extra),
-            Style::default().fg(Color::Yellow),
-        )));
-        line_map.push(None);
     }
 
     // Write state back for key handler
     let total_lines = lines.len();
     app.diff_view.total_lines = total_lines;
     app.diff_view.rendered_line_map = line_map;
+    app.diff_view.fold_positions = fold_positions;
+
+    // Resolve pending fold jump: move cursor to the new fold position
+    if let Some(target) = app.diff_view.jump_to_fold.take() {
+        if let Some((pos, _)) = app.diff_view.fold_positions.iter().find(|(_, t)| *t == target) {
+            app.diff_view.cursor = *pos;
+        }
+    }
 
     let viewport_height = area.height.saturating_sub(1) as usize;
     app.diff_view.viewport_height = viewport_height;
@@ -250,5 +277,15 @@ fn make_expanded_context_line(content: &str, old_line: usize, new_line: usize) -
     Line::from(vec![
         Span::styled(format!(" {:>4} {:>4} ", old_line, new_line), Style::default().fg(Color::Blue)),
         Span::styled(format!(" {}", content), Style::default().fg(Color::Blue).add_modifier(Modifier::DIM)),
+    ])
+}
+
+fn make_fold_line(hidden: usize) -> Line<'static> {
+    Line::from(vec![
+        Span::styled("  ", Style::default()),
+        Span::styled(
+            format!("· · · {} line{} hidden · · ·", hidden, if hidden > 1 { "s" } else { "" }),
+            Style::default().fg(Color::Blue).add_modifier(Modifier::DIM),
+        ),
     ])
 }

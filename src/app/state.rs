@@ -51,6 +51,12 @@ pub struct DiffViewState {
     pub rendered_line_map: Vec<Option<(usize, Option<usize>)>>,
     /// Which hunk to expand context around, set when user presses =
     pub expand_hunk: Option<usize>,
+    /// Positions of fold indicators: (rendered_line_idx, hunk_idx_after_fold)
+    pub fold_positions: Vec<(usize, usize)>,
+    /// Whether to expand context after the last hunk (file tail)
+    pub expand_tail: bool,
+    /// After expansion, jump cursor to this fold's new position (resolved after render)
+    pub jump_to_fold: Option<usize>,
 }
 
 impl Default for DiffViewState {
@@ -72,6 +78,9 @@ impl Default for DiffViewState {
             viewport_height: 0,
             rendered_line_map: Vec::new(),
             expand_hunk: None,
+            fold_positions: Vec::new(),
+            expand_tail: false,
+            jump_to_fold: None,
         }
     }
 }

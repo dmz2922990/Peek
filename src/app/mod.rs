@@ -157,11 +157,11 @@ fn handle_diff_view_key(app: &mut App, key: KeyEvent) -> Command {
         if let Some(Some((hunk_idx, _))) = app.diff_view.rendered_line_map.get(app.diff_view.cursor) {
             app.diff_view.expand_hunk = Some(*hunk_idx);
         }
-        app.diff_view.extra_context = app.diff_view.extra_context.saturating_add(3);
+        app.diff_view.extra_context = app.diff_view.extra_context.saturating_add(app.config.diff.default_context_lines);
         return Command::None;
     }
     if is_key(&key, &kb.context_collapse) {
-        app.diff_view.extra_context = app.diff_view.extra_context.saturating_sub(3);
+        app.diff_view.extra_context = app.diff_view.extra_context.saturating_sub(app.config.diff.default_context_lines);
         if app.diff_view.extra_context == 0 {
             app.diff_view.expand_hunk = None;
         }
@@ -179,7 +179,24 @@ fn handle_diff_view_key(app: &mut App, key: KeyEvent) -> Command {
     if is_key(&key, &kb.context_collapse_all) {
         app.diff_view.extra_context = 0;
         app.diff_view.expand_hunk = None;
+        app.diff_view.expand_tail = false;
         return Command::None;
+    }
+
+    // Enter: expand fold at cursor
+    if matches!(key.code, KeyCode::Enter) {
+        let cursor = app.diff_view.cursor;
+        if let Some((_, target)) = app.diff_view.fold_positions.iter().find(|(pos, _)| *pos == cursor) {
+            if *target == usize::MAX {
+                app.diff_view.expand_tail = true;
+                app.diff_view.jump_to_fold = Some(usize::MAX);
+            } else {
+                app.diff_view.expand_hunk = Some(*target);
+                app.diff_view.jump_to_fold = Some(*target);
+            }
+            app.diff_view.extra_context = app.diff_view.extra_context.saturating_add(app.config.diff.default_context_lines);
+            return Command::None;
+        }
     }
 
     // Diff target switch
