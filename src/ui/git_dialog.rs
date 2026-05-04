@@ -16,8 +16,8 @@ pub fn draw_commit(f: &mut Frame, app: &App) {
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(1),    // branch
-            Constraint::Length(3),    // files summary
-            Constraint::Min(5),       // message editor
+            Constraint::Length(1),    // files summary
+            Constraint::Min(3),       // message editor
             Constraint::Length(1),    // hints
         ])
         .split(area.inner(ratatui::layout::Margin::new(1, 1)));
@@ -35,29 +35,39 @@ pub fn draw_commit(f: &mut Frame, app: &App) {
     f.render_widget(branch_text, chunks[0]);
 
     // Files summary
-    let summary = format!("Files changed: {} (+{} -{})", app.files_changed(), app.total_additions(), app.total_deletions());
+    let summary = format!("Files: {}  +{} -{}", app.files_changed(), app.total_additions(), app.total_deletions());
     let summary_text = Paragraph::new(summary)
         .style(Style::default().fg(Color::Yellow));
     f.render_widget(summary_text, chunks[1]);
 
     // Message editor
-    let msg = if app.diff_view.commit_message.is_empty() {
-        "Type commit message...".to_string()
-    } else {
-        app.diff_view.commit_message.clone()
-    };
-    let msg_style = if app.diff_view.commit_message.is_empty() {
-        Style::default().fg(Color::DarkGray)
-    } else {
-        Style::default().fg(Color::White)
-    };
-    let msg_text = Paragraph::new(msg).style(msg_style).wrap(Wrap { trim: false });
+    let msg = app.diff_view.commit_message.clone();
+    let msg_text = Paragraph::new(msg)
+        .style(Style::default().fg(Color::White))
+        .wrap(Wrap { trim: false });
     f.render_widget(msg_text, chunks[2]);
 
-    // Hints
-    let hints = Paragraph::new("Ctrl+Enter: commit  Esc: cancel")
-        .style(Style::default().fg(Color::DarkGray));
+    // Hints at bottom
+    let hints = Paragraph::new(Line::from(vec![
+        Span::styled("Enter", Style::default().fg(Color::Cyan)),
+        Span::styled(":new line  ", Style::default().fg(Color::White)),
+        Span::styled("Ctrl+Enter", Style::default().fg(Color::Cyan)),
+        Span::styled(":commit  ", Style::default().fg(Color::White)),
+        Span::styled("Esc", Style::default().fg(Color::Cyan)),
+        Span::styled(":cancel", Style::default().fg(Color::White)),
+    ]));
     f.render_widget(hints, chunks[3]);
+
+    // Place cursor at end of commit message
+    let msg = &app.diff_view.commit_message;
+    if msg.is_empty() {
+        f.set_cursor_position((chunks[2].x, chunks[2].y));
+    } else {
+        let line_count = msg.lines().count().max(1);
+        let last_line_len = msg.lines().last().map(|l| l.len()).unwrap_or(0) as u16;
+        let msg_row = (line_count - 1).min(chunks[2].height as usize - 1) as u16;
+        f.set_cursor_position((chunks[2].x + last_line_len, chunks[2].y + msg_row));
+    }
 }
 
 pub fn draw_push(f: &mut Frame, app: &App) {

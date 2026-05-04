@@ -1,4 +1,4 @@
-use review_helper::config::{load_from_str, types::Config};
+use peek::config::{load_from_str, types::Config};
 
 #[test]
 fn test_default_config() {

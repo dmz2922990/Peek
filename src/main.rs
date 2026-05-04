@@ -10,11 +10,11 @@ use crossterm::{
 use ratatui::{backend::CrosstermBackend, Terminal};
 use tokio::sync::mpsc;
 
-use review_helper::app::{self, message::{Command, Message}, state::App};
-use review_helper::config;
-use review_helper::diff::parser;
-use review_helper::git_cmd::{diff as git_diff, ops as git_ops};
-use review_helper::ui;
+use peek::app::{self, message::{Command, Message}, state::App};
+use peek::config;
+use peek::diff::parser;
+use peek::git_cmd::{diff as git_diff, ops as git_ops};
+use peek::ui;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -110,7 +110,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-fn spawn_diff_load(tx: mpsc::Sender<Message>, mode: review_helper::diff::types::DiffMode) {
+fn spawn_diff_load(tx: mpsc::Sender<Message>, mode: peek::diff::types::DiffMode) {
     tokio::spawn(async move {
         let result = tokio::task::spawn_blocking(move || {
             git_diff::run_git_diff(&mode)
