@@ -21,3 +21,20 @@ pub fn load() -> Config {
 pub fn load_from_str(content: &str) -> Result<Config> {
     Ok(toml::from_str(content)?)
 }
+
+pub fn save(cfg: &Config) {
+    let path = config_path();
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    match toml::to_string_pretty(cfg) {
+        Ok(content) => {
+            if let Err(e) = fs::write(&path, content) {
+                eprintln!("Warning: failed to save config to {}: {}", path.display(), e);
+            }
+        }
+        Err(e) => {
+            eprintln!("Warning: failed to serialize config: {}", e);
+        }
+    }
+}

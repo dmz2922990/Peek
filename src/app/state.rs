@@ -13,6 +13,7 @@ pub enum AppMode {
     GitPush,
     FindBar,
     VisualSelect,
+    Help,
 }
 
 #[derive(Debug, Clone)]
@@ -88,6 +89,9 @@ pub struct App {
     pub size: (u16, u16),
     pub current_branch: Option<String>,
     pub editing_file: Option<PathBuf>,
+    pub help_cursor: usize,
+    pub help_scroll: usize,
+    pub help_editing: Option<usize>,
 }
 
 impl App {
@@ -102,6 +106,9 @@ impl App {
             size: (80, 24),
             current_branch: None,
             editing_file: None,
+            help_cursor: 0,
+            help_scroll: 0,
+            help_editing: None,
         }
     }
 

@@ -44,7 +44,7 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect, focused: bool) {
     };
 
     let list = List::new(items)
-        .block(Block::default().borders(Borders::RIGHT).title(title).border_style(border_style))
+        .block(Block::default().borders(Borders::ALL).title(title).border_style(border_style))
         .highlight_style(
             Style::default()
                 .bg(Color::DarkGray)

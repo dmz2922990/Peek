@@ -118,6 +118,72 @@ pub fn config_path() -> PathBuf {
     dirs_home().join(".config").join("review-helper").join("config.toml")
 }
 
+pub const KEYBINDING_ENTRIES: &[(&str, &str)] = &[
+    ("toggle_file_tree", "Toggle file tree"),
+    ("quit", "Quit"),
+    ("scroll_down", "Scroll down"),
+    ("scroll_up", "Scroll up"),
+    ("open_editor", "Open editor"),
+    ("commit", "Git commit"),
+    ("push", "Git push"),
+    ("open_pr", "Open PR"),
+    ("find", "Find"),
+    ("copy", "Copy"),
+    ("visual_select", "Visual select"),
+    ("context_expand", "Context expand"),
+    ("context_collapse", "Context collapse"),
+    ("context_expand_all", "Expand all context"),
+    ("context_collapse_all", "Collapse all context"),
+    ("diff_target_switch", "Switch diff target"),
+];
+
+impl Keybindings {
+    pub fn get_binding(&self, index: usize) -> Option<&str> {
+        match index {
+            0 => Some(&self.toggle_file_tree),
+            1 => Some(&self.quit),
+            2 => Some(&self.scroll_down),
+            3 => Some(&self.scroll_up),
+            4 => Some(&self.open_editor),
+            5 => Some(&self.commit),
+            6 => Some(&self.push),
+            7 => Some(&self.open_pr),
+            8 => Some(&self.find),
+            9 => Some(&self.copy),
+            10 => Some(&self.visual_select),
+            11 => Some(&self.context_expand),
+            12 => Some(&self.context_collapse),
+            13 => Some(&self.context_expand_all),
+            14 => Some(&self.context_collapse_all),
+            15 => Some(&self.diff_target_switch),
+            _ => None,
+        }
+    }
+
+    pub fn set_binding(&mut self, index: usize, value: String) -> bool {
+        match index {
+            0 => self.toggle_file_tree = value,
+            1 => self.quit = value,
+            2 => self.scroll_down = value,
+            3 => self.scroll_up = value,
+            4 => self.open_editor = value,
+            5 => self.commit = value,
+            6 => self.push = value,
+            7 => self.open_pr = value,
+            8 => self.find = value,
+            9 => self.copy = value,
+            10 => self.visual_select = value,
+            11 => self.context_expand = value,
+            12 => self.context_collapse = value,
+            13 => self.context_expand_all = value,
+            14 => self.context_collapse_all = value,
+            15 => self.diff_target_switch = value,
+            _ => return false,
+        }
+        true
+    }
+}
+
 fn dirs_home() -> PathBuf {
     std::env::var("HOME")
         .or_else(|_| std::env::var("USERPROFILE"))

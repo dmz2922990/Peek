@@ -68,6 +68,7 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Command {
         AppMode::FindBar => handle_find_key(app, key),
         AppMode::VisualSelect => handle_visual_select_key(app, key),
         AppMode::Editor => handle_editor_key(app, key),
+        AppMode::Help => handle_help_key(app, key),
     }
 }
 
@@ -236,6 +237,15 @@ fn handle_diff_view_key(app: &mut App, key: KeyEvent) -> Command {
             app.editing_file = Some(file.display_path().to_path_buf());
             app.mode = AppMode::Editor;
         }
+        return Command::None;
+    }
+
+    // Help
+    if matches!(key.code, KeyCode::Char('H')) {
+        app.mode = AppMode::Help;
+        app.help_cursor = 0;
+        app.help_scroll = 0;
+        app.help_editing = None;
         return Command::None;
     }
 
@@ -449,6 +459,86 @@ fn handle_visual_select_key(app: &mut App, key: KeyEvent) -> Command {
     }
 
     Command::None
+}
+
+fn handle_help_key(app: &mut App, key: KeyEvent) -> Command {
+    let configurable_count = crate::config::types::KEYBINDING_ENTRIES.len();
+    let total_entries = configurable_count + 1 + 6; // 6 fixed keys
+
+    // If editing a keybinding, capture the next key
+    if let Some(edit_idx) = app.help_editing {
+        if matches!(key.code, KeyCode::Esc) {
+            app.help_editing = None;
+            return Command::None;
+        }
+
+        let binding_str = key_event_to_binding(&key);
+        if !binding_str.is_empty() {
+            app.config.keybindings.set_binding(edit_idx, binding_str);
+            crate::config::save(&app.config);
+            app.help_editing = None;
+        }
+        return Command::None;
+    }
+
+    match key.code {
+        KeyCode::Esc => {
+            app.mode = AppMode::DiffViewFocus;
+            app.help_editing = None;
+            Command::None
+        }
+        KeyCode::Char('j') | KeyCode::Down => {
+            if app.help_cursor + 1 < total_entries {
+                app.help_cursor += 1;
+            }
+            Command::None
+        }
+        KeyCode::Char('k') | KeyCode::Up => {
+            if app.help_cursor > 0 {
+                app.help_cursor -= 1;
+            }
+            Command::None
+        }
+        KeyCode::Enter => {
+            // Only allow editing configurable entries
+            if app.help_cursor < configurable_count {
+                app.help_editing = Some(app.help_cursor);
+            }
+            Command::None
+        }
+        _ => Command::None,
+    }
+}
+
+/// Convert a KeyEvent to a binding string like "ctrl+j", "alt+x", "q"
+fn key_event_to_binding(key: &KeyEvent) -> String {
+    let mut parts = Vec::new();
+    if key.modifiers.contains(KeyModifiers::CONTROL) {
+        parts.push("ctrl");
+    }
+    if key.modifiers.contains(KeyModifiers::ALT) {
+        parts.push("alt");
+    }
+
+    let key_part = match key.code {
+        KeyCode::Char(c) => c.to_string(),
+        KeyCode::Tab => "tab".into(),
+        KeyCode::Enter => "enter".into(),
+        KeyCode::Esc => "esc".into(),
+        KeyCode::Backspace => "backspace".into(),
+        KeyCode::Up => "up".into(),
+        KeyCode::Down => "down".into(),
+        KeyCode::Left => "left".into(),
+        KeyCode::Right => "right".into(),
+        KeyCode::PageUp => "pageup".into(),
+        KeyCode::PageDown => "pagedown".into(),
+        KeyCode::Home => "home".into(),
+        KeyCode::End => "end".into(),
+        _ => return String::new(), // unsupported key
+    };
+
+    parts.push(&key_part);
+    parts.join("+")
 }
 
 fn copy_cursor_line(app: &mut App) -> Command {
