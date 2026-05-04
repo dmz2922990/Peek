@@ -20,12 +20,12 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect, focused: bool) {
         };
 
         let path = file.display_path().display().to_string();
-        let stats = format!("+{} -{}", file.additions, file.deletions);
 
         let line = Line::from(vec![
             Span::styled(format!("{} ", indicator), Style::default().fg(color)),
             Span::styled(path, Style::default()),
-            Span::styled(format!(" {}", stats), Style::default().fg(Color::DarkGray)),
+            Span::styled(format!(" +{}", file.additions), Style::default().fg(Color::Green)),
+            Span::styled(format!(" -{}", file.deletions), Style::default().fg(Color::Red)),
         ]);
 
         ListItem::new(line)
