@@ -4,7 +4,6 @@ pub mod file_tree;
 pub mod diff_view;
 pub mod git_dialog;
 pub mod find_bar;
-pub mod editor;
 pub mod help;
 
 use ratatui::{Frame, layout::{Constraint, Direction, Layout}};
@@ -51,7 +50,6 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         AppMode::GitCommit => git_dialog::draw_commit(f, app),
         AppMode::GitPush => git_dialog::draw_push(f, app),
         AppMode::FindBar => find_bar::draw(f, app, status_area),
-        AppMode::Editor => editor::draw(f, app),
         AppMode::Help => help::draw(f, app),
         _ => {}
     }

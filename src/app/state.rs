@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use crate::config::types::Config;
 use crate::diff::types::{DiffMode, FileDiff};
 
@@ -8,7 +6,6 @@ pub enum AppMode {
     Normal,
     FileTreeFocus,
     DiffViewFocus,
-    Editor,
     GitCommit,
     GitPush,
     FindBar,
@@ -88,7 +85,6 @@ pub struct App {
     pub should_quit: bool,
     pub size: (u16, u16),
     pub current_branch: Option<String>,
-    pub editing_file: Option<PathBuf>,
     pub help_cursor: usize,
     pub help_scroll: usize,
     pub help_editing: Option<usize>,
@@ -105,7 +101,6 @@ impl App {
             should_quit: false,
             size: (80, 24),
             current_branch: None,
-            editing_file: None,
             help_cursor: 0,
             help_scroll: 0,
             help_editing: None,

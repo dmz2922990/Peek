@@ -62,7 +62,32 @@ async fn main() -> Result<()> {
             match event::read()? {
                 Event::Key(key) => {
                     let cmd = app::update(&mut app, Message::Key(key));
-                    execute_command(cmd, &tx).await;
+                    match cmd {
+                        Command::OpenFile { path, line } => {
+                            // Suspend TUI
+                            let _ = disable_raw_mode();
+                            let _ = execute!(io::stdout(), LeaveAlternateScreen);
+
+                            // Open external editor
+                            let editor = std::env::var("EDITOR")
+                                .or_else(|_| std::env::var("VISUAL"))
+                                .unwrap_or_else(|_| "vim".into());
+                            let line_arg = format!("+{}", line.max(1));
+                            let _ = std::process::Command::new(&editor)
+                                .arg(&line_arg)
+                                .arg(&path)
+                                .status();
+
+                            // Resume TUI
+                            let _ = execute!(io::stdout(), EnterAlternateScreen);
+                            let _ = enable_raw_mode();
+                            let _ = terminal.clear();
+
+                            // Refresh diff after potential edits
+                            spawn_diff_load(tx.clone(), app.diff_view.mode.clone());
+                        }
+                        cmd => execute_command(cmd, &tx).await,
+                    }
                 }
                 Event::Resize(w, h) => {
                     let cmd = app::update(&mut app, Message::Resize(w, h));
@@ -166,6 +191,9 @@ async fn execute_command(cmd: Command, tx: &mpsc::Sender<Message>) {
                 }
             });
         }
+        Command::OpenFile { .. } => {
+            // Handled in main loop before execute_command is called
+        }
         Command::OpenUrl(branch) => {
             let tx = tx.clone();
             tokio::spawn(async move {
@@ -187,9 +215,6 @@ async fn execute_command(cmd: Command, tx: &mpsc::Sender<Message>) {
                     }
                 }
             });
-        }
-        Command::OpenFile { .. } => {
-            // Editor handles this internally
         }
     }
 }

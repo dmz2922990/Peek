@@ -16,11 +16,6 @@ pub fn update(app: &mut App, msg: Message) -> Command {
         }
         Message::DiffLoaded(files) => {
             app.diff_data = files;
-            app.file_tree.selected = 0;
-            app.diff_view.scroll = 0;
-            app.diff_view.cursor = 0;
-            app.diff_view.expand_hunk = None;
-            app.diff_view.extra_context = 0;
             app.diff_view.status_message = None;
             Command::None
         }
@@ -67,7 +62,6 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Command {
         AppMode::GitPush => handle_push_key(app, key),
         AppMode::FindBar => handle_find_key(app, key),
         AppMode::VisualSelect => handle_visual_select_key(app, key),
-        AppMode::Editor => handle_editor_key(app, key),
         AppMode::Help => handle_help_key(app, key),
     }
 }
@@ -234,8 +228,8 @@ fn handle_diff_view_key(app: &mut App, key: KeyEvent) -> Command {
     // Open editor
     if is_key(&key, &kb.open_editor) {
         if let Some(file) = app.current_file().or_else(|| app.diff_data.first()) {
-            app.editing_file = Some(file.display_path().to_path_buf());
-            app.mode = AppMode::Editor;
+            let line = cursor_line_number(app);
+            return Command::OpenFile { path: file.display_path().to_path_buf(), line };
         }
         return Command::None;
     }
@@ -395,26 +389,29 @@ fn clamp_scroll(app: &mut App, viewport: usize) {
     }
 }
 
-fn handle_editor_key(app: &mut App, key: KeyEvent) -> Command {
-    match key.code {
-        KeyCode::Esc => {
-            app.mode = AppMode::DiffViewFocus;
-            app.editing_file = None;
-            // Refresh diff after potential edits
-            Command::LoadDiff(app.diff_view.mode.clone())
-        }
-        KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-            // Save — for now just confirm, actual save done via external edit
-            app.diff_view.status_message = Some("File saved".into());
-            Command::None
-        }
-        KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-            // Find/replace placeholder
-            app.diff_view.status_message = Some("Find/replace: not yet implemented".into());
-            Command::None
-        }
-        _ => Command::None,
+/// Compute the source file line number at or near the current diff cursor position.
+fn cursor_line_number(app: &App) -> usize {
+    let cursor = app.diff_view.cursor;
+    let map = &app.diff_view.rendered_line_map;
+    let file = match app.current_file().or_else(|| app.diff_data.first()) {
+        Some(f) => f,
+        None => return 1,
+    };
+
+    // Try exact cursor position
+    if let Some(Some((hunk_idx, Some(line_idx)))) = map.get(cursor) {
+        return line_number_from_idx(&file.hunks[*hunk_idx], *line_idx);
     }
+
+    // Search backward for nearest diff line
+    for i in (0..cursor).rev() {
+        if let Some(Some((hunk_idx, Some(line_idx)))) = map.get(i) {
+            return line_number_from_idx(&file.hunks[*hunk_idx], *line_idx);
+        }
+    }
+
+    // Fallback: first line
+    1
 }
 
 fn handle_visual_select_key(app: &mut App, key: KeyEvent) -> Command {

@@ -15,8 +15,8 @@ const FIXED_KEYS: &[(&str, &str)] = &[
     ("n/N", "Next/previous hunk"),
     ("Tab", "Switch focus"),
     ("PgDn/PgUp", "Half-page scroll"),
-    ("Esc", "Cancel/close"),
     ("Ctrl+Enter", "Confirm commit"),
+    ("Esc", "Cancel/close"),
 ];
 
 pub fn draw(f: &mut Frame, app: &mut App) {
