@@ -51,6 +51,8 @@ pub struct DiffConfig {
     pub default_context_lines: usize,
     #[serde(default = "default_file_tree_width_percent")]
     pub file_tree_width_percent: u16,
+    #[serde(default = "default_file_tree_position")]
+    pub file_tree_position: String,
 }
 
 impl Default for Config {
@@ -90,6 +92,7 @@ impl Default for DiffConfig {
         Self {
             default_context_lines: default_context_lines(),
             file_tree_width_percent: default_file_tree_width_percent(),
+            file_tree_position: default_file_tree_position(),
         }
     }
 }
@@ -113,6 +116,7 @@ fn default_context_collapse_all() -> String { "_".into() }
 fn default_diff_target_switch() -> String { "S".into() }
 fn default_context_lines() -> usize { 3 }
 fn default_file_tree_width_percent() -> u16 { 30 }
+fn default_file_tree_position() -> String { "left".into() }
 
 pub fn config_path() -> PathBuf {
     dirs_home().join(".config").join("review-helper").join("config.toml")
@@ -178,6 +182,52 @@ impl Keybindings {
             13 => self.context_expand_all = value,
             14 => self.context_collapse_all = value,
             15 => self.diff_target_switch = value,
+            _ => return false,
+        }
+        true
+    }
+}
+
+pub const CONFIG_ENTRIES: &[(&str, &str)] = &[
+    ("default_context_lines", "Context lines"),
+    ("file_tree_width_percent", "File tree width %"),
+    ("file_tree_position", "File tree position"),
+];
+
+impl DiffConfig {
+    pub fn get_entry(&self, index: usize) -> Option<String> {
+        match index {
+            0 => Some(self.default_context_lines.to_string()),
+            1 => Some(self.file_tree_width_percent.to_string()),
+            2 => Some(self.file_tree_position.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn set_entry(&mut self, index: usize, value: String) -> bool {
+        match index {
+            0 => {
+                if let Ok(v) = value.parse::<usize>() {
+                    self.default_context_lines = v;
+                } else {
+                    return false;
+                }
+            }
+            1 => {
+                if let Ok(v) = value.parse::<u16>() {
+                    self.file_tree_width_percent = v;
+                } else {
+                    return false;
+                }
+            }
+            2 => {
+                let v = value.to_lowercase();
+                if v == "left" || v == "right" {
+                    self.file_tree_position = v;
+                } else {
+                    return false;
+                }
+            }
             _ => return false,
         }
         true

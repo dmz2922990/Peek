@@ -25,19 +25,33 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     // Main area: file tree + diff view
     if app.file_tree.visible {
         let width_pct = app.config.diff.file_tree_width_percent;
+        let tree_on_right = app.config.diff.file_tree_position == "right";
+
+        let (tree_pct, diff_pct) = if tree_on_right {
+            (100u16.saturating_sub(width_pct), width_pct)
+        } else {
+            (width_pct, 100u16.saturating_sub(width_pct))
+        };
+
         let main_chunks = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
-                Constraint::Percentage(width_pct),
-                Constraint::Percentage(100 - width_pct),
+                Constraint::Percentage(tree_pct),
+                Constraint::Percentage(diff_pct),
             ])
             .split(main_area);
 
         let file_focused = matches!(app.mode, AppMode::FileTreeFocus);
         let diff_focused = matches!(app.mode, AppMode::DiffViewFocus | AppMode::VisualSelect);
 
-        file_tree::draw(f, app, main_chunks[0], file_focused);
-        diff_view::draw(f, app, main_chunks[1], diff_focused);
+        let (tree_area, diff_area) = if tree_on_right {
+            (main_chunks[1], main_chunks[0])
+        } else {
+            (main_chunks[0], main_chunks[1])
+        };
+
+        file_tree::draw(f, app, tree_area, file_focused);
+        diff_view::draw(f, app, diff_area, diff_focused);
     } else {
         diff_view::draw(f, app, main_area, true);
     }

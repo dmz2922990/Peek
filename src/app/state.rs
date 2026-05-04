@@ -88,6 +88,7 @@ pub struct App {
     pub help_cursor: usize,
     pub help_scroll: usize,
     pub help_editing: Option<usize>,
+    pub help_input_buffer: String,
 }
 
 impl App {
@@ -104,6 +105,7 @@ impl App {
             help_cursor: 0,
             help_scroll: 0,
             help_editing: None,
+            help_input_buffer: String::new(),
         }
     }
 

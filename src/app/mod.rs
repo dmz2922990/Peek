@@ -459,29 +459,62 @@ fn handle_visual_select_key(app: &mut App, key: KeyEvent) -> Command {
 }
 
 fn handle_help_key(app: &mut App, key: KeyEvent) -> Command {
-    let configurable_count = crate::config::types::KEYBINDING_ENTRIES.len();
-    let total_entries = configurable_count + 1 + 6; // 6 fixed keys
+    use crate::config::types::{CONFIG_ENTRIES, KEYBINDING_ENTRIES};
 
-    // If editing a keybinding, capture the next key
+    let kb_count = KEYBINDING_ENTRIES.len();
+    let cfg_offset = kb_count + 1;
+    let cfg_count = CONFIG_ENTRIES.len();
+    let fixed_offset = cfg_offset + cfg_count + 1;
+    let fixed_count = 6;
+    let total_entries = fixed_offset + fixed_count;
+
+    // ── Editing mode ──
     if let Some(edit_idx) = app.help_editing {
         if matches!(key.code, KeyCode::Esc) {
             app.help_editing = None;
+            app.help_input_buffer.clear();
             return Command::None;
         }
 
-        let binding_str = key_event_to_binding(&key);
-        if !binding_str.is_empty() {
-            app.config.keybindings.set_binding(edit_idx, binding_str);
-            crate::config::save(&app.config);
-            app.help_editing = None;
+        if edit_idx < kb_count {
+            // Keybinding: capture single key press
+            let binding_str = key_event_to_binding(&key);
+            if !binding_str.is_empty() {
+                app.help_input_buffer = binding_str.clone();
+                app.config.keybindings.set_binding(edit_idx, binding_str);
+                crate::config::save(&app.config);
+                app.help_editing = None;
+                app.help_input_buffer.clear();
+            }
+        } else if edit_idx >= cfg_offset && edit_idx < cfg_offset + cfg_count {
+            // Config value: text input
+            let cfg_idx = edit_idx - cfg_offset;
+            match key.code {
+                KeyCode::Enter => {
+                    if app.config.diff.set_entry(cfg_idx, app.help_input_buffer.clone()) {
+                        crate::config::save(&app.config);
+                    }
+                    app.help_editing = None;
+                    app.help_input_buffer.clear();
+                }
+                KeyCode::Backspace => {
+                    app.help_input_buffer.pop();
+                }
+                KeyCode::Char(c) => {
+                    app.help_input_buffer.push(c);
+                }
+                _ => {}
+            }
         }
         return Command::None;
     }
 
+    // ── Navigation mode ──
     match key.code {
         KeyCode::Esc => {
             app.mode = AppMode::DiffViewFocus;
             app.help_editing = None;
+            app.help_input_buffer.clear();
             Command::None
         }
         KeyCode::Char('j') | KeyCode::Down => {
@@ -497,9 +530,19 @@ fn handle_help_key(app: &mut App, key: KeyEvent) -> Command {
             Command::None
         }
         KeyCode::Enter => {
-            // Only allow editing configurable entries
-            if app.help_cursor < configurable_count {
-                app.help_editing = Some(app.help_cursor);
+            let cursor = app.help_cursor;
+            if cursor < kb_count || (cursor >= cfg_offset && cursor < cfg_offset + cfg_count) {
+                // Populate input buffer with current value
+                if cursor < kb_count {
+                    app.help_input_buffer = app.config.keybindings.get_binding(cursor)
+                        .unwrap_or("").to_string();
+                    // Store original to detect changes
+                } else {
+                    let cfg_idx = cursor - cfg_offset;
+                    app.help_input_buffer = app.config.diff.get_entry(cfg_idx)
+                        .unwrap_or_default();
+                }
+                app.help_editing = Some(cursor);
             }
             Command::None
         }
