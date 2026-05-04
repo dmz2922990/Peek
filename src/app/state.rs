@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::config::types::Config;
 use crate::diff::types::{DiffMode, FileDiff};
 
@@ -43,18 +45,15 @@ pub struct DiffViewState {
     pub current_match: usize,
     pub commit_message: String,
     pub status_message: Option<String>,
-    pub extra_context: usize,
     pub total_lines: usize,
     pub viewport_height: usize,
     /// Maps each rendered line index to (hunk_idx, Some(line_idx)) for diff lines,
     /// (hunk_idx, None) for expanded context, or None for headers/indicators
     pub rendered_line_map: Vec<Option<(usize, Option<usize>)>>,
-    /// Which hunk to expand context around, set when user presses =
-    pub expand_hunk: Option<usize>,
+    /// Per-fold expand count: hunk_idx -> lines expanded (usize::MAX for tail fold)
+    pub expanded_folds: HashMap<usize, usize>,
     /// Positions of fold indicators: (rendered_line_idx, hunk_idx_after_fold)
     pub fold_positions: Vec<(usize, usize)>,
-    /// Whether to expand context after the last hunk (file tail)
-    pub expand_tail: bool,
     /// After expansion, jump cursor to this fold's new position (resolved after render)
     pub jump_to_fold: Option<usize>,
 }
@@ -73,13 +72,11 @@ impl Default for DiffViewState {
             current_match: 0,
             commit_message: String::new(),
             status_message: None,
-            extra_context: 0,
             total_lines: 0,
             viewport_height: 0,
             rendered_line_map: Vec::new(),
-            expand_hunk: None,
+            expanded_folds: HashMap::new(),
             fold_positions: Vec::new(),
-            expand_tail: false,
             jump_to_fold: None,
         }
     }

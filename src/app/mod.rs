@@ -162,15 +162,21 @@ fn handle_diff_view_key(app: &mut App, key: KeyEvent) -> Command {
     // Context expand/collapse (incremental)
     if is_key(&key, &kb.context_expand) {
         if let Some(Some((hunk_idx, _))) = app.diff_view.rendered_line_map.get(app.diff_view.cursor) {
-            app.diff_view.expand_hunk = Some(*hunk_idx);
+            let key = *hunk_idx * 2;
+            let entry = app.diff_view.expanded_folds.entry(key).or_insert(0);
+            *entry = entry.saturating_add(app.config.diff.default_context_lines);
         }
-        app.diff_view.extra_context = app.diff_view.extra_context.saturating_add(app.config.diff.default_context_lines);
         return Command::None;
     }
     if is_key(&key, &kb.context_collapse) {
-        app.diff_view.extra_context = app.diff_view.extra_context.saturating_sub(app.config.diff.default_context_lines);
-        if app.diff_view.extra_context == 0 {
-            app.diff_view.expand_hunk = None;
+        if let Some(Some((hunk_idx, _))) = app.diff_view.rendered_line_map.get(app.diff_view.cursor) {
+            let key = *hunk_idx * 2;
+            if let Some(count) = app.diff_view.expanded_folds.get_mut(&key) {
+                *count = count.saturating_sub(app.config.diff.default_context_lines);
+                if *count == 0 {
+                    app.diff_view.expanded_folds.remove(&key);
+                }
+            }
         }
         return Command::None;
     }
@@ -178,15 +184,13 @@ fn handle_diff_view_key(app: &mut App, key: KeyEvent) -> Command {
     // Context expand/collapse (full — Shift+= / Shift+-)
     if is_key(&key, &kb.context_expand_all) {
         if let Some(Some((hunk_idx, _))) = app.diff_view.rendered_line_map.get(app.diff_view.cursor) {
-            app.diff_view.expand_hunk = Some(*hunk_idx);
-            app.diff_view.extra_context = 1000;
+            app.diff_view.expanded_folds.insert(*hunk_idx * 2, 1000);
+            app.diff_view.expanded_folds.insert(*hunk_idx * 2 + 1, 1000);
         }
         return Command::None;
     }
     if is_key(&key, &kb.context_collapse_all) {
-        app.diff_view.extra_context = 0;
-        app.diff_view.expand_hunk = None;
-        app.diff_view.expand_tail = false;
+        app.diff_view.expanded_folds.clear();
         return Command::None;
     }
 
@@ -194,14 +198,9 @@ fn handle_diff_view_key(app: &mut App, key: KeyEvent) -> Command {
     if matches!(key.code, KeyCode::Enter) {
         let cursor = app.diff_view.cursor;
         if let Some((_, target)) = app.diff_view.fold_positions.iter().find(|(pos, _)| *pos == cursor) {
-            if *target == usize::MAX {
-                app.diff_view.expand_tail = true;
-                app.diff_view.jump_to_fold = Some(usize::MAX);
-            } else {
-                app.diff_view.expand_hunk = Some(*target);
-                app.diff_view.jump_to_fold = Some(*target);
-            }
-            app.diff_view.extra_context = app.diff_view.extra_context.saturating_add(app.config.diff.default_context_lines);
+            let entry = app.diff_view.expanded_folds.entry(*target).or_insert(0);
+            *entry = entry.saturating_add(app.config.diff.default_context_lines);
+            app.diff_view.jump_to_fold = Some(*target);
             return Command::None;
         }
     }
@@ -308,8 +307,7 @@ fn handle_file_tree_key(app: &mut App, key: KeyEvent) -> Command {
             app.diff_view.selected_file = Some(app.file_tree.selected);
             app.diff_view.scroll = 0;
             app.diff_view.cursor = 0;
-            app.diff_view.expand_hunk = None;
-            app.diff_view.extra_context = 0;
+            app.diff_view.expanded_folds.clear();
             Command::None
         }
         KeyCode::Tab => {

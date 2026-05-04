@@ -59,18 +59,15 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
     )));
     line_map.push(None);
 
-    // Use the locked expansion target from state (set by = key, not computed per frame)
-    let expand_target = app.diff_view.expand_hunk;
-
     // Load source file for context expansion
     let source_lines = load_source_lines(&file.new_path);
-    let extra = app.diff_view.extra_context;
+    let expanded_folds = &app.diff_view.expanded_folds;
 
     for (hunk_idx, hunk) in file.hunks.iter().enumerate() {
-        // Only expand context near the locked target hunk (± 1)
-        let expand_this = extra > 0 && expand_target.map_or(false, |et| {
-            hunk_idx >= et.saturating_sub(1) && hunk_idx <= et + 1
-        });
+        let down_key = hunk_idx * 2;
+        let up_key = hunk_idx * 2 + 1;
+        let down_count = expanded_folds.get(&down_key).copied().unwrap_or(0);
+        let up_count = expanded_folds.get(&up_key).copied().unwrap_or(0);
 
         // ── Fold indicator / expanded context before hunk ──
         let prev_hunk_end = if hunk_idx == 0 {
@@ -82,29 +79,56 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
         let gap = current_hunk_start.saturating_sub(prev_hunk_end);
 
         if gap > 0 {
-            if expand_this {
-                // Fold for remaining hidden lines (at top), then expanded context below
-                let expand_count = gap.min(extra);
-                let remaining = gap.saturating_sub(expand_count);
-                if remaining > 0 {
-                    let fold_idx = lines.len();
-                    lines.push(make_fold_line(remaining));
-                    line_map.push(None);
-                    fold_positions.push((fold_idx, hunk_idx));
-                }
-                let start = current_hunk_start.saturating_sub(expand_count);
-                for line_no in start..current_hunk_start {
+            let total_shown = down_count + up_count;
+            if total_shown >= gap {
+                // All context visible
+                for line_no in prev_hunk_end..current_hunk_start {
                     if let Some(content) = get_source_line(&source_lines, line_no) {
                         lines.push(make_expanded_context_line(&content, line_no, line_no));
                         line_map.push(Some((hunk_idx, None)));
                     }
                 }
             } else {
-                // Show fold indicator for full gap
-                let fold_idx = lines.len();
-                lines.push(make_fold_line(gap));
-                line_map.push(None);
-                fold_positions.push((fold_idx, hunk_idx));
+                let hidden = gap - total_shown;
+                let use_dual = gap > app.config.diff.default_context_lines;
+
+                // Context expanded from top
+                for i in 0..down_count {
+                    let line_no = prev_hunk_end + i;
+                    if let Some(content) = get_source_line(&source_lines, line_no) {
+                        lines.push(make_expanded_context_line(&content, line_no, line_no));
+                        line_map.push(Some((hunk_idx, None)));
+                    }
+                }
+
+                if use_dual {
+                    // ↓ fold indicator
+                    let fold_idx = lines.len();
+                    lines.push(make_fold_line_down(hidden));
+                    line_map.push(None);
+                    fold_positions.push((fold_idx, down_key));
+
+                    // ↑ fold indicator
+                    let fold_idx = lines.len();
+                    lines.push(make_fold_line_up(hidden));
+                    line_map.push(None);
+                    fold_positions.push((fold_idx, up_key));
+                } else {
+                    // Single fold indicator for small gap
+                    let fold_idx = lines.len();
+                    lines.push(make_fold_line(hidden));
+                    line_map.push(None);
+                    fold_positions.push((fold_idx, down_key));
+                }
+
+                // Context expanded from bottom
+                for i in 0..up_count {
+                    let line_no = current_hunk_start - up_count + i;
+                    if let Some(content) = get_source_line(&source_lines, line_no) {
+                        lines.push(make_expanded_context_line(&content, line_no, line_no));
+                        line_map.push(Some((hunk_idx, None)));
+                    }
+                }
             }
         }
 
@@ -132,8 +156,9 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
             let tail_gap = total_file_lines.saturating_sub(after_start);
 
             if tail_gap > 0 {
-                if app.diff_view.expand_tail && extra > 0 {
-                    let expand_count = tail_gap.min(extra);
+                let tail_extra = expanded_folds.get(&usize::MAX).copied().unwrap_or(0);
+                if tail_extra > 0 {
+                    let expand_count = tail_gap.min(tail_extra);
                     for offset in 0..expand_count {
                         let line_no = after_start + offset;
                         if let Some(content) = get_source_line(&source_lines, line_no) {
@@ -285,6 +310,26 @@ fn make_fold_line(hidden: usize) -> Line<'static> {
         Span::styled("  ", Style::default()),
         Span::styled(
             format!("· · · {} line{} hidden · · ·", hidden, if hidden > 1 { "s" } else { "" }),
+            Style::default().fg(Color::Blue).add_modifier(Modifier::DIM),
+        ),
+    ])
+}
+
+fn make_fold_line_down(hidden: usize) -> Line<'static> {
+    Line::from(vec![
+        Span::styled("  ", Style::default()),
+        Span::styled(
+            format!("↓ · · · {} line{} hidden · · ·", hidden, if hidden > 1 { "s" } else { "" }),
+            Style::default().fg(Color::Blue).add_modifier(Modifier::DIM),
+        ),
+    ])
+}
+
+fn make_fold_line_up(hidden: usize) -> Line<'static> {
+    Line::from(vec![
+        Span::styled("  ", Style::default()),
+        Span::styled(
+            format!("↑ · · · {} line{} hidden · · ·", hidden, if hidden > 1 { "s" } else { "" }),
             Style::default().fg(Color::Blue).add_modifier(Modifier::DIM),
         ),
     ])
