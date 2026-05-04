@@ -37,6 +37,10 @@ pub struct Keybindings {
     pub context_expand: String,
     #[serde(default = "default_context_collapse")]
     pub context_collapse: String,
+    #[serde(default = "default_context_expand_all")]
+    pub context_expand_all: String,
+    #[serde(default = "default_context_collapse_all")]
+    pub context_collapse_all: String,
     #[serde(default = "default_diff_target_switch")]
     pub diff_target_switch: String,
 }
@@ -74,6 +78,8 @@ impl Default for Keybindings {
             visual_select: default_visual_select(),
             context_expand: default_context_expand(),
             context_collapse: default_context_collapse(),
+            context_expand_all: default_context_expand_all(),
+            context_collapse_all: default_context_collapse_all(),
             diff_target_switch: default_diff_target_switch(),
         }
     }
@@ -102,6 +108,8 @@ fn default_copy() -> String { "y".into() }
 fn default_visual_select() -> String { "v".into() }
 fn default_context_expand() -> String { "=".into() }
 fn default_context_collapse() -> String { "-".into() }
+fn default_context_expand_all() -> String { "+".into() }
+fn default_context_collapse_all() -> String { "_".into() }
 fn default_diff_target_switch() -> String { "S".into() }
 fn default_context_lines() -> usize { 3 }
 fn default_file_tree_width_percent() -> u16 { 30 }

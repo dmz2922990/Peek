@@ -147,9 +147,18 @@ fn handle_diff_view_key(app: &mut App, key: KeyEvent) -> Command {
         return Command::None;
     }
 
-    // Context expand/collapse
+    // Jump to next/previous hunk (n/N)
+    if matches!(key.code, KeyCode::Char('n')) {
+        jump_hunk(app, 1);
+        return Command::None;
+    }
+    if matches!(key.code, KeyCode::Char('N')) {
+        jump_hunk(app, -1);
+        return Command::None;
+    }
+
+    // Context expand/collapse (incremental)
     if is_key(&key, &kb.context_expand) {
-        // Always update expansion target to cursor's current hunk
         if let Some(Some((hunk_idx, _))) = app.diff_view.rendered_line_map.get(app.diff_view.cursor) {
             app.diff_view.expand_hunk = Some(*hunk_idx);
         }
@@ -161,6 +170,20 @@ fn handle_diff_view_key(app: &mut App, key: KeyEvent) -> Command {
         if app.diff_view.extra_context == 0 {
             app.diff_view.expand_hunk = None;
         }
+        return Command::None;
+    }
+
+    // Context expand/collapse (full — Shift+= / Shift+-)
+    if is_key(&key, &kb.context_expand_all) {
+        if let Some(Some((hunk_idx, _))) = app.diff_view.rendered_line_map.get(app.diff_view.cursor) {
+            app.diff_view.expand_hunk = Some(*hunk_idx);
+            app.diff_view.extra_context = 1000;
+        }
+        return Command::None;
+    }
+    if is_key(&key, &kb.context_collapse_all) {
+        app.diff_view.extra_context = 0;
+        app.diff_view.expand_hunk = None;
         return Command::None;
     }
 
@@ -517,6 +540,40 @@ fn line_number_from_idx(hunk: &crate::diff::types::Hunk, line_idx: usize) -> usi
         Some(crate::diff::types::DiffLine::Add { new_line, .. }) => *new_line,
         Some(crate::diff::types::DiffLine::Delete { old_line, .. }) => *old_line,
         None => 0,
+    }
+}
+
+/// Jump to the next (+1) or previous (-1) hunk relative to cursor position.
+fn jump_hunk(app: &mut App, direction: i32) {
+    let map = &app.diff_view.rendered_line_map;
+    let cursor = app.diff_view.cursor;
+    let viewport = app.diff_view.viewport_height.max(1);
+
+    // Find current hunk index
+    let current_hunk: Option<usize> = map.get(cursor)
+        .and_then(|opt| opt.map(|(h, _)| h));
+
+    let target_hunk: usize = match (current_hunk, direction) {
+        (Some(h), 1) => h + 1,
+        (Some(h), -1) => h.saturating_sub(1),
+        (None, 1) => 0,
+        (None, -1) => return, // already before first hunk
+        _ => return,
+    };
+
+    // Find the first diff line of the target hunk in the rendered map
+    let target_pos = map.iter().enumerate().find(|(_, entry)| {
+        matches!(entry, Some((h, Some(0))) if *h == target_hunk)
+    }).map(|(i, _)| i);
+
+    if let Some(pos) = target_pos {
+        app.diff_view.cursor = pos;
+        // Adjust scroll to keep cursor visible
+        if pos >= app.diff_view.scroll + viewport {
+            app.diff_view.scroll = pos + 1 - viewport;
+        } else if pos < app.diff_view.scroll {
+            app.diff_view.scroll = pos;
+        }
     }
 }
 
