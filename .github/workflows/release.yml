@@ -83,9 +83,11 @@ jobs:
         with:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
-      - name: Publish to npm
+      - name: Rename package to scoped name and publish
         if: steps.find_npm.outputs.found == 'true'
         working-directory: ${{ steps.find_npm.outputs.dir }}
-        run: npm publish --access public
+        run: |
+          npm pkg set name="@dmz2922990/peek"
+          npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

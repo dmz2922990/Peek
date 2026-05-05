@@ -1,5 +1,5 @@
 [package]
-name = "@dmz2922990/peek"
+name = "peek"
 version = "0.1.0"
 edition = "2024"
 repository = "https://github.com/dmz2922990/Peek"
