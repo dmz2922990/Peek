@@ -66,7 +66,7 @@ jobs:
         with:
           path: artifacts/
           merge-multiple: true
-      - name: Find npm package
+      - name: Find and patch npm package
         id: find_npm
         run: |
           PKG_DIR=$(find artifacts -name "package.json" -type f -printf '%h\n' | head -1)
@@ -76,6 +76,19 @@ jobs:
           else
             echo "found=true" >> "$GITHUB_OUTPUT"
             echo "dir=$PKG_DIR" >> "$GITHUB_OUTPUT"
+            cd "$PKG_DIR"
+            node -e '
+            const fs = require("fs");
+            const pkg = JSON.parse(fs.readFileSync("./package.json", "utf8"));
+            pkg.supportedPlatforms = {
+              "aarch64-apple-darwin": { "artifactName": "peek-aarch64-apple-darwin.tar.gz", "bins": { "peek": "peek" }, "zipExt": ".tar.gz" },
+              "x86_64-apple-darwin": { "artifactName": "peek-x86_64-apple-darwin.tar.gz", "bins": { "peek": "peek" }, "zipExt": ".tar.gz" },
+              "x86_64-unknown-linux-gnu": { "artifactName": "peek-x86_64-unknown-linux-gnu.tar.gz", "bins": { "peek": "peek" }, "zipExt": ".tar.gz" },
+              "x86_64-pc-windows-msvc": { "artifactName": "peek-x86_64-pc-windows-msvc.zip", "bins": { "peek": "peek.exe" }, "zipExt": ".zip" }
+            };
+            fs.writeFileSync("./package.json", JSON.stringify(pkg, null, 2) + "\n");
+            console.log("Patched supportedPlatforms:", Object.keys(pkg.supportedPlatforms));
+            '
             cat "$PKG_DIR/package.json"
           fi
       - uses: actions/setup-node@v4
