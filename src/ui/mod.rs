@@ -1,4 +1,5 @@
 pub mod layout;
+pub mod theme;
 pub mod status_bar;
 pub mod file_tree;
 pub mod diff_view;

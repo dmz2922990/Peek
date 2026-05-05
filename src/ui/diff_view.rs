@@ -4,19 +4,20 @@ use std::path::Path;
 use ratatui::{
     Frame,
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
 };
 
 use crate::app::state::{App, AppMode};
 use crate::diff::types::DiffLine;
+use crate::ui::theme;
 
 pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
     let border_style = if focused {
-        Style::default().fg(Color::Cyan)
+        Style::default().fg(theme::CYAN)
     } else {
-        Style::default().fg(Color::DarkGray)
+        Style::default().fg(theme::UNFOCUSED_BORDER)
     };
 
     let title = match app.mode {
@@ -31,7 +32,7 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
 
     if app.diff_data.is_empty() {
         let widget = Paragraph::new("No diff loaded. Run in a git repository with changes.")
-            .style(Style::default().fg(Color::DarkGray))
+            .style(Style::default().fg(theme::TEXT_SECONDARY))
             .block(block);
         f.render_widget(widget, area);
         return;
@@ -50,12 +51,12 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
     // File header
     lines.push(Line::from(Span::styled(
         format!("--- {}", file.old_path.display()),
-        Style::default().fg(Color::DarkGray),
+        Style::default().fg(theme::TEXT_SECONDARY),
     )));
     line_map.push(None);
     lines.push(Line::from(Span::styled(
         format!("+++ {}", file.new_path.display()),
-        Style::default().fg(Color::DarkGray),
+        Style::default().fg(theme::TEXT_SECONDARY),
     )));
     line_map.push(None);
 
@@ -140,7 +141,7 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
         };
         lines.push(Line::from(Span::styled(
             header_text,
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            Style::default().fg(theme::CYAN).add_modifier(Modifier::BOLD),
         )));
         line_map.push(None);
 
@@ -243,15 +244,15 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
 
             if is_cursor {
                 let mut new_spans = vec![
-                    Span::styled("▸", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+                    Span::styled("▸", Style::default().fg(theme::YELLOW).add_modifier(Modifier::BOLD)),
                 ];
                 new_spans.append(&mut line.spans);
-                let bg = if is_selected { Color::Rgb(60, 60, 100) } else { Color::DarkGray };
+                let bg = if is_selected { theme::VISUAL_SELECT_CURSOR } else { theme::SELECTION_BG };
                 Line::from(new_spans).patch_style(Style::default().bg(bg))
             } else if is_selected {
                 Line::from(
                     std::mem::take(&mut line.spans)
-                ).patch_style(Style::default().bg(Color::Rgb(40, 40, 80)))
+                ).patch_style(Style::default().bg(theme::VISUAL_SELECT_RANGE))
             } else {
                 line
             }
@@ -279,20 +280,20 @@ fn make_diff_line(dl: &DiffLine) -> Line<'static> {
     match dl {
         DiffLine::Context { content, old_line, new_line } => {
             Line::from(vec![
-                Span::styled(format!(" {:>4} {:>4} ", old_line, new_line), Style::default().fg(Color::DarkGray)),
-                Span::styled(format!(" {}", content), Style::default().fg(Color::White)),
+                Span::styled(format!(" {:>4} {:>4} ", old_line, new_line), Style::default().fg(theme::TEXT_SECONDARY)),
+                Span::styled(format!(" {}", content), Style::default().fg(theme::TEXT_PRIMARY)),
             ])
         }
         DiffLine::Add { content, new_line } => {
             Line::from(vec![
-                Span::styled(format!("      {:>4} ", new_line), Style::default().fg(Color::DarkGray)),
-                Span::styled(format!("+{}", content), Style::default().fg(Color::Green)),
+                Span::styled(format!("      {:>4} ", new_line), Style::default().fg(theme::TEXT_SECONDARY)),
+                Span::styled(format!("+{}", content), Style::default().fg(theme::GREEN)),
             ])
         }
         DiffLine::Delete { content, old_line } => {
             Line::from(vec![
-                Span::styled(format!(" {:>4}      ", old_line), Style::default().fg(Color::DarkGray)),
-                Span::styled(format!("-{}", content), Style::default().fg(Color::Red)),
+                Span::styled(format!(" {:>4}      ", old_line), Style::default().fg(theme::TEXT_SECONDARY)),
+                Span::styled(format!("-{}", content), Style::default().fg(theme::RED)),
             ])
         }
     }
@@ -300,8 +301,8 @@ fn make_diff_line(dl: &DiffLine) -> Line<'static> {
 
 fn make_expanded_context_line(content: &str, old_line: usize, new_line: usize) -> Line<'static> {
     Line::from(vec![
-        Span::styled(format!(" {:>4} {:>4} ", old_line, new_line), Style::default().fg(Color::Blue)),
-        Span::styled(format!(" {}", content), Style::default().fg(Color::White).add_modifier(Modifier::DIM)),
+        Span::styled(format!(" {:>4} {:>4} ", old_line, new_line), Style::default().fg(theme::BLUE)),
+        Span::styled(format!(" {}", content), Style::default().fg(theme::TEXT_PRIMARY).add_modifier(Modifier::DIM)),
     ])
 }
 
@@ -310,7 +311,7 @@ fn make_fold_line(hidden: usize) -> Line<'static> {
         Span::styled("  ", Style::default()),
         Span::styled(
             format!("· · · {} line{} hidden · · ·", hidden, if hidden > 1 { "s" } else { "" }),
-            Style::default().fg(Color::Blue).add_modifier(Modifier::DIM),
+            Style::default().fg(theme::BLUE).add_modifier(Modifier::DIM),
         ),
     ])
 }
@@ -320,7 +321,7 @@ fn make_fold_line_down(hidden: usize) -> Line<'static> {
         Span::styled("  ", Style::default()),
         Span::styled(
             format!("↓ · · · {} line{} hidden · · ·", hidden, if hidden > 1 { "s" } else { "" }),
-            Style::default().fg(Color::Blue).add_modifier(Modifier::DIM),
+            Style::default().fg(theme::BLUE).add_modifier(Modifier::DIM),
         ),
     ])
 }
@@ -330,7 +331,7 @@ fn make_fold_line_up(hidden: usize) -> Line<'static> {
         Span::styled("  ", Style::default()),
         Span::styled(
             format!("↑ · · · {} line{} hidden · · ·", hidden, if hidden > 1 { "s" } else { "" }),
-            Style::default().fg(Color::Blue).add_modifier(Modifier::DIM),
+            Style::default().fg(theme::BLUE).add_modifier(Modifier::DIM),
         ),
     ])
 }

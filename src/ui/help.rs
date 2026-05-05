@@ -1,13 +1,14 @@
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Margin, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
 };
 
 use crate::app::state::App;
 use crate::config::types::{CONFIG_ENTRIES, KEYBINDING_ENTRIES};
+use crate::ui::theme;
 
 const FIXED_KEYS: &[(&str, &str)] = &[
     ("g/G", "Jump to top/bottom"),
@@ -30,7 +31,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     let block = Block::default()
         .borders(Borders::ALL)
         .title(" Settings (Enter to edit, Esc to close) ")
-        .style(Style::default().bg(Color::DarkGray));
+        .style(Style::default().bg(theme::DIALOG_BG));
     f.render_widget(block, area);
 
     let inner = area.inner(Margin::new(1, 1));
@@ -41,7 +42,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     // ── Keybindings ──
     for (i, (_field, desc)) in KEYBINDING_ENTRIES.iter().enumerate() {
         let binding = app.config.keybindings.get_binding(i).unwrap_or("?");
-        lines.push(entry_line(i, app.help_cursor, *desc, binding, Color::Cyan));
+        lines.push(entry_line(i, app.help_cursor, *desc, binding, theme::CYAN));
     }
 
     // ── Configuration ──
@@ -49,14 +50,14 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     for (i, (_field, desc)) in CONFIG_ENTRIES.iter().enumerate() {
         let row_idx = CFG_OFFSET + i;
         let value = app.config.diff.get_entry(i).unwrap_or_else(|| "?".into());
-        lines.push(entry_line(row_idx, app.help_cursor, *desc, &value, Color::Green));
+        lines.push(entry_line(row_idx, app.help_cursor, *desc, &value, theme::GREEN));
     }
 
     // ── Fixed keys ──
     lines.push(separator(" Fixed keys "));
     for (offset, (key, desc)) in FIXED_KEYS.iter().enumerate() {
         let row_idx = FIXED_OFFSET + offset;
-        lines.push(entry_line(row_idx, app.help_cursor, *desc, key, Color::Magenta));
+        lines.push(entry_line(row_idx, app.help_cursor, *desc, key, theme::MAGENTA));
     }
 
     // Clamp scroll
@@ -79,7 +80,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         .map(|(idx, mut line)| {
             if idx == app.help_cursor {
                 Line::from(std::mem::take(&mut line.spans))
-                    .patch_style(Style::default().bg(Color::Rgb(40, 40, 60)))
+                    .patch_style(Style::default().bg(theme::HELP_CURSOR_BG))
             } else {
                 line
             }
@@ -104,7 +105,7 @@ fn draw_edit_popup(f: &mut Frame, app: &App, edit_idx: usize) {
     let block = Block::default()
         .borders(Borders::ALL)
         .title(format!(" Edit: {} ", field_name))
-        .style(Style::default().bg(Color::Rgb(30, 30, 45)));
+        .style(Style::default().bg(theme::EDIT_POPUP_BG));
     f.render_widget(block, popup);
 
     let inner = popup.inner(Margin::new(1, 1));
@@ -114,21 +115,21 @@ fn draw_edit_popup(f: &mut Frame, app: &App, edit_idx: usize) {
     // Field description
     lines.push(Line::from(Span::styled(
         description.to_string(),
-        Style::default().fg(Color::White),
+        Style::default().fg(theme::TEXT_PRIMARY),
     )));
     lines.push(Line::from(""));
 
     // Current value label
     lines.push(Line::from(Span::styled(
         "Current value:",
-        Style::default().fg(Color::DarkGray),
+        Style::default().fg(theme::TEXT_SECONDARY),
     )));
 
     // Current value
     let current = app.help_input_buffer.clone();
     lines.push(Line::from(Span::styled(
         format!("  {}", current),
-        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+        Style::default().fg(theme::CYAN).add_modifier(Modifier::BOLD),
     )));
     lines.push(Line::from(""));
 
@@ -136,17 +137,17 @@ fn draw_edit_popup(f: &mut Frame, app: &App, edit_idx: usize) {
     if is_keybinding {
         lines.push(Line::from(Span::styled(
             "Press any key to set new binding",
-            Style::default().fg(Color::Yellow),
+            Style::default().fg(theme::YELLOW),
         )));
     } else {
         lines.push(Line::from(Span::styled(
             "Type to edit value",
-            Style::default().fg(Color::Yellow),
+            Style::default().fg(theme::YELLOW),
         )));
     }
     lines.push(Line::from(Span::styled(
         "Enter: confirm   Esc: cancel",
-        Style::default().fg(Color::DarkGray),
+        Style::default().fg(theme::TEXT_SECONDARY),
     )));
 
     // Value hints for config entries
@@ -161,7 +162,7 @@ fn draw_edit_popup(f: &mut Frame, app: &App, edit_idx: usize) {
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
             format!("Valid values: {}", hint),
-            Style::default().fg(Color::DarkGray),
+            Style::default().fg(theme::TEXT_SECONDARY),
         )));
     }
 
@@ -188,17 +189,17 @@ fn resolve_edit_field(edit_idx: usize) -> (&'static str, &'static str, bool) {
     ("unknown", "", false)
 }
 
-fn entry_line(row_idx: usize, cursor: usize, desc: &str, value: &str, value_color: Color) -> Line<'static> {
+fn entry_line(row_idx: usize, cursor: usize, desc: &str, value: &str, value_color: ratatui::style::Color) -> Line<'static> {
     let is_cursor = row_idx == cursor;
     let marker = if is_cursor { "▸ " } else { "  " };
     Line::from(vec![
-        Span::styled(marker, Style::default().fg(Color::Yellow)),
-        Span::styled(format!("{:>20} ", desc), cursor_style(is_cursor, Color::White)),
+        Span::styled(marker, Style::default().fg(theme::YELLOW)),
+        Span::styled(format!("{:>20} ", desc), cursor_style(is_cursor, theme::TEXT_PRIMARY)),
         Span::styled(value.to_string(), cursor_style(is_cursor, value_color)),
     ])
 }
 
-fn cursor_style(is_cursor: bool, color: Color) -> Style {
+fn cursor_style(is_cursor: bool, color: ratatui::style::Color) -> Style {
     if is_cursor {
         Style::default().fg(color).add_modifier(Modifier::BOLD)
     } else {
@@ -209,7 +210,7 @@ fn cursor_style(is_cursor: bool, color: Color) -> Style {
 fn separator(title: &str) -> Line<'static> {
     Line::from(Span::styled(
         format!("  ──{}──", title),
-        Style::default().fg(Color::DarkGray),
+        Style::default().fg(theme::TEXT_SECONDARY),
     ))
 }
 

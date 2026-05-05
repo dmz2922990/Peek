@@ -1,11 +1,12 @@
 use ratatui::{
     Frame,
     layout::Rect,
-    style::{Color, Style},
+    style::Style,
     widgets::Paragraph,
 };
 
 use crate::app::state::App;
+use crate::ui::theme;
 
 pub fn draw(f: &mut Frame, app: &App, area: Rect) {
     let term = app.diff_view.search_term.as_deref().unwrap_or("");
@@ -20,6 +21,6 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
     };
 
     let paragraph = Paragraph::new(format!("{}{}", text, hint))
-        .style(Style::default().fg(Color::Yellow));
+        .style(Style::default().fg(theme::YELLOW));
     f.render_widget(paragraph, area);
 }
