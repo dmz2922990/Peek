@@ -42,6 +42,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -51,26 +52,5 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Install dist
         run: cargo install cargo-dist --version 0.31.0 --locked
-      - name: Create GitHub Release
+      - name: Create GitHub Release and publish to npm
         run: dist publish
-
-  publish-npm:
-    needs: build
-    runs-on: ubuntu-latest
-    env:
-      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: target/distrib/
-          merge-multiple: true
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          registry-url: "https://registry.npmjs.org"
-      - name: Publish to npm
-        working-directory: target/distrib/
-        run: |
-          npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
