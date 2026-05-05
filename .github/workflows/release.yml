@@ -37,20 +37,55 @@ jobs:
           name: artifacts-${{ matrix.target }}
           path: target/distrib/*
 
-  publish:
+  release:
     needs: build
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: target/distrib/
           merge-multiple: true
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Install dist
-        run: cargo install cargo-dist --version 0.31.0 --locked
-      - name: Create GitHub Release and publish to npm
-        run: dist publish
+      - name: List artifacts
+        run: find target/distrib -type f | head -50
+      - name: Create GitHub Release
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "target/distrib/**/*"
+          artifactErrorsFailBuild: true
+
+  publish-npm:
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+          merge-multiple: true
+      - name: Find npm package
+        id: find_npm
+        run: |
+          PKG_DIR=$(find artifacts -name "package.json" -type f -printf '%h\n' | head -1)
+          if [ -z "$PKG_DIR" ]; then
+            echo "No npm package found, skipping"
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "dir=$PKG_DIR" >> "$GITHUB_OUTPUT"
+            cat "$PKG_DIR/package.json"
+          fi
+      - uses: actions/setup-node@v4
+        if: steps.find_npm.outputs.found == 'true'
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+      - name: Publish to npm
+        if: steps.find_npm.outputs.found == 'true'
+        working-directory: ${{ steps.find_npm.outputs.dir }}
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
