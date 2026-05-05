@@ -39,7 +39,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: ${{ from_json(needs.plan.outputs.targets) }}
+        target: ${{ fromJSON(needs.plan.outputs.targets) }}
     runs-on: ${{ matrix.target.runner }}
     steps:
       - uses: actions/checkout@v4
