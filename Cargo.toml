@@ -2,6 +2,7 @@
 name = "peek"
 version = "0.1.0"
 edition = "2024"
+repository = "https://github.com/dmz2922990/Peek"
 
 [dependencies]
 ratatui = "0.29"
