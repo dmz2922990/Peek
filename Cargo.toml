@@ -22,7 +22,7 @@ inherits = "release"
 lto = "thin"
 
 [workspace.metadata.dist]
-cargo-dist-version = "0.30.3"
+cargo-dist-version = "0.31.0"
 ci = "github"
 installers = ["shell", "npm"]
 publish-jobs = ["npm"]

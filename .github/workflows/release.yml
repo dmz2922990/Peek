@@ -27,7 +27,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
       - name: Install cargo-dist
-        run: cargo install cargo-dist@0.30.3 --locked
+        run: cargo install cargo-dist --version 0.31.0 --locked
       - id: plan
         run: cargo dist plan --output-format=json >> "$GITHUB_OUTPUT"
         env:
@@ -50,7 +50,7 @@ jobs:
         with:
           targets: ${{ matrix.target.target }}
       - name: Install cargo-dist
-        run: cargo install cargo-dist@0.30.3 --locked
+        run: cargo install cargo-dist --version 0.31.0 --locked
       - name: Build artifacts
         run: |
           cargo dist build --target=${{ matrix.target.target }} --output-format=json > dist-manifest.json
@@ -79,7 +79,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
       - name: Install cargo-dist
-        run: cargo install cargo-dist@0.30.3 --locked
+        run: cargo install cargo-dist --version 0.31.0 --locked
       - name: Create Release and publish
         run: cargo dist publish
       - name: Setup Node.js for npm publish
