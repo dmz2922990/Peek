@@ -11,6 +11,7 @@ use ratatui::{
 
 use crate::app::state::{App, AppMode};
 use crate::diff::types::DiffLine;
+use crate::syntax::SyntaxHighlighter;
 use crate::ui::theme;
 
 pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
@@ -62,6 +63,7 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
 
     // Load source file for context expansion
     let source_lines = load_source_lines(&file.new_path);
+    let mut highlighter = SyntaxHighlighter::new(&file.new_path);
     let expanded_folds = &app.diff_view.expanded_folds;
 
     for (hunk_idx, hunk) in file.hunks.iter().enumerate() {
@@ -85,7 +87,7 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
                 // All context visible
                 for line_no in prev_hunk_end..current_hunk_start {
                     if let Some(content) = get_source_line(&source_lines, line_no) {
-                        lines.push(make_expanded_context_line(&content, line_no, line_no));
+                        lines.push(make_expanded_context_line(&content, line_no, line_no, &mut highlighter));
                         line_map.push(Some((hunk_idx, None)));
                     }
                 }
@@ -97,7 +99,7 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
                 for i in 0..down_count {
                     let line_no = prev_hunk_end + i;
                     if let Some(content) = get_source_line(&source_lines, line_no) {
-                        lines.push(make_expanded_context_line(&content, line_no, line_no));
+                        lines.push(make_expanded_context_line(&content, line_no, line_no, &mut highlighter));
                         line_map.push(Some((hunk_idx, None)));
                     }
                 }
@@ -126,7 +128,7 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
                 for i in 0..up_count {
                     let line_no = current_hunk_start - up_count + i;
                     if let Some(content) = get_source_line(&source_lines, line_no) {
-                        lines.push(make_expanded_context_line(&content, line_no, line_no));
+                        lines.push(make_expanded_context_line(&content, line_no, line_no, &mut highlighter));
                         line_map.push(Some((hunk_idx, None)));
                     }
                 }
@@ -146,7 +148,7 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
         line_map.push(None);
 
         for (line_idx, dl) in hunk.lines.iter().enumerate() {
-            lines.push(make_diff_line(dl));
+            lines.push(make_diff_line(dl, &mut highlighter));
             line_map.push(Some((hunk_idx, Some(line_idx))));
         }
 
@@ -163,7 +165,7 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
                     for offset in 0..expand_count {
                         let line_no = after_start + offset;
                         if let Some(content) = get_source_line(&source_lines, line_no) {
-                            lines.push(make_expanded_context_line(&content, line_no, line_no));
+                            lines.push(make_expanded_context_line(&content, line_no, line_no, &mut highlighter));
                             line_map.push(Some((hunk_idx, None)));
                         }
                     }
@@ -276,13 +278,15 @@ fn get_source_line(lines: &[String], line_no: usize) -> Option<String> {
     lines.get(line_no - 1).cloned()
 }
 
-fn make_diff_line(dl: &DiffLine) -> Line<'static> {
+fn make_diff_line(dl: &DiffLine, highlighter: &mut SyntaxHighlighter) -> Line<'static> {
     match dl {
         DiffLine::Context { content, old_line, new_line } => {
-            Line::from(vec![
-                Span::styled(format!(" {:>4} {:>4} ", old_line, new_line), Style::default().fg(theme::TEXT_SECONDARY)),
-                Span::styled(format!(" {}", content), Style::default().fg(theme::TEXT_PRIMARY)),
-            ])
+            let gutter = Span::styled(format!(" {:>4} {:>4} ", old_line, new_line), Style::default().fg(theme::TEXT_SECONDARY));
+            let mut spans = vec![gutter];
+            for (style, text) in highlighter.highlight_line(content) {
+                spans.push(Span::styled(format!(" {}", text), style));
+            }
+            Line::from(spans)
         }
         DiffLine::Add { content, new_line } => {
             Line::from(vec![
@@ -299,11 +303,13 @@ fn make_diff_line(dl: &DiffLine) -> Line<'static> {
     }
 }
 
-fn make_expanded_context_line(content: &str, old_line: usize, new_line: usize) -> Line<'static> {
-    Line::from(vec![
-        Span::styled(format!(" {:>4} {:>4} ", old_line, new_line), Style::default().fg(theme::BLUE)),
-        Span::styled(format!(" {}", content), Style::default().fg(theme::TEXT_PRIMARY).add_modifier(Modifier::DIM)),
-    ])
+fn make_expanded_context_line(content: &str, old_line: usize, new_line: usize, highlighter: &mut SyntaxHighlighter) -> Line<'static> {
+    let gutter = Span::styled(format!(" {:>4} {:>4} ", old_line, new_line), Style::default().fg(theme::BLUE));
+    let mut spans = vec![gutter];
+    for (style, text) in highlighter.highlight_line(content) {
+        spans.push(Span::styled(format!(" {}", text), style));
+    }
+    Line::from(spans)
 }
 
 fn make_fold_line(hidden: usize) -> Line<'static> {

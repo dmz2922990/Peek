@@ -89,7 +89,7 @@ jobs:
             fs.writeFileSync("./package.json", JSON.stringify(pkg, null, 2) + "\n");
             console.log("Patched supportedPlatforms:", Object.keys(pkg.supportedPlatforms));
             '
-            cat "$PKG_DIR/package.json"
+            cat package.json
           fi
       - uses: actions/setup-node@v4
         if: steps.find_npm.outputs.found == 'true'
