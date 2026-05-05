@@ -36,3 +36,4 @@ targets = [
 unix-archive = ".tar.gz"
 windows-archive = ".zip"
 install-updater = false
+allow-dirty = ["ci"]
