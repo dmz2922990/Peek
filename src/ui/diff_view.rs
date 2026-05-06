@@ -168,7 +168,9 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
         })
         .collect();
 
-    let widget = Paragraph::new(visible_lines).block(block);
+    let widget = Paragraph::new(visible_lines)
+        .style(Style::default().bg(theme::DEFAULT_BG))
+        .block(block);
     f.render_widget(widget, area);
 }
 

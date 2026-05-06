@@ -18,6 +18,11 @@ use peek::ui;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    if std::env::args().any(|arg| arg == "--version" || arg == "-V") {
+        println!("peek {}", env!("CARGO_PKG_VERSION"));
+        return Ok(());
+    }
+
     let cfg = config::load();
     let mut app = App::new(cfg);
 

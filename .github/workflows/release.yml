@@ -18,7 +18,7 @@ jobs:
             runner: macos-latest
           - target: x86_64-apple-darwin
             runner: macos-latest
-          - target: x86_64-unknown-linux-gnu
+          - target: x86_64-unknown-linux-musl
             runner: ubuntu-latest
           - target: x86_64-pc-windows-msvc
             runner: windows-latest
@@ -28,6 +28,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+      - name: Install musl tools
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
       - name: Install dist
         run: cargo install cargo-dist --version 0.31.0 --locked
       - name: Build artifacts
@@ -83,7 +86,7 @@ jobs:
             pkg.supportedPlatforms = {
               "aarch64-apple-darwin": { "artifactName": "peek-aarch64-apple-darwin.tar.gz", "bins": { "peek": "peek" }, "zipExt": ".tar.gz" },
               "x86_64-apple-darwin": { "artifactName": "peek-x86_64-apple-darwin.tar.gz", "bins": { "peek": "peek" }, "zipExt": ".tar.gz" },
-              "x86_64-unknown-linux-gnu": { "artifactName": "peek-x86_64-unknown-linux-gnu.tar.gz", "bins": { "peek": "peek" }, "zipExt": ".tar.gz" },
+              "x86_64-unknown-linux-musl": { "artifactName": "peek-x86_64-unknown-linux-musl.tar.gz", "bins": { "peek": "peek" }, "zipExt": ".tar.gz" },
               "x86_64-pc-windows-msvc": { "artifactName": "peek-x86_64-pc-windows-msvc.zip", "bins": { "peek": "peek.exe" }, "zipExt": ".zip" }
             };
             fs.writeFileSync("./package.json", JSON.stringify(pkg, null, 2) + "\n");
