@@ -44,15 +44,48 @@ fn pad_line(line: &mut Line<'static>, min_width: usize, bg: ratatui::style::Colo
     }
 }
 
+/// Tab width for rendering tab characters.
+const TAB_WIDTH: usize = 4;
+
+/// Style for the tab indicator character `»`.
+fn tab_indicator_style(base: Style) -> Style {
+    Style::default().fg(theme::TEXT_SECONDARY).bg(base.bg.unwrap_or(theme::DEFAULT_BG))
+        .add_modifier(Modifier::DIM)
+}
+
 /// Write a single Line directly into the buffer with horizontal scroll offset.
+/// Tab characters are expanded to spaces with a `»` indicator at the first position.
 fn write_row(buf: &mut ratatui::buffer::Buffer, y: u16, area: Rect, line: &Line, hscroll: usize, default_style: Style) {
     let mut skip = hscroll;
     let mut x: u16 = area.x;
+    let mut logical_col: usize = 0;
+
     for span in &line.spans {
         if x >= area.right() { break; }
         for ch in span.content.chars() {
+            if ch == '\t' {
+                let spaces = TAB_WIDTH - logical_col % TAB_WIDTH;
+                logical_col += spaces;
+                for i in 0..spaces {
+                    if skip > 0 {
+                        skip -= 1;
+                        continue;
+                    }
+                    if x >= area.right() { break; }
+                    if i == 0 {
+                        buf[(x, y)].set_symbol("»");
+                        buf[(x, y)].set_style(tab_indicator_style(span.style));
+                    } else {
+                        buf[(x, y)].set_symbol(" ");
+                        buf[(x, y)].set_style(span.style);
+                    }
+                    x += 1;
+                }
+                continue;
+            }
             let cw = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0) as u16;
             if cw == 0 { continue; }
+            logical_col += cw as usize;
             if skip > 0 {
                 if cw as usize > skip { skip = 0; } else { skip -= cw as usize; }
                 continue;

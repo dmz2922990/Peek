@@ -15,6 +15,7 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
     let files = app.files_changed();
 
     let mode_str = format!("{}", app.diff_view.mode);
+    let branch = app.current_branch.as_deref().unwrap_or("unknown");
 
     let mut spans = vec![
         Span::styled(
@@ -22,7 +23,7 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
             Style::default().fg(theme::GREEN),
         ),
         Span::styled(
-            format!(" [{}] ", mode_str),
+            format!(" [{}:{}] ", branch, mode_str),
             Style::default().fg(theme::CYAN),
         ),
     ];
