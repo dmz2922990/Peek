@@ -113,24 +113,27 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
     }
 
     let total_lines = app.diff_view.cached_lines.len();
-    let viewport_height = area.height as usize;
-    app.diff_view.viewport_height = viewport_height;
-    let max_scroll = total_lines.saturating_sub(viewport_height);
+    // Reserve 2 rows for frozen file headers
+    let frozen_rows: usize = 2;
+    let content_height = area.height.saturating_sub(frozen_rows as u16) as usize;
+    app.diff_view.viewport_height = content_height;
 
-    // Clamp cursor
+    // Clamp cursor — never onto frozen header rows (0, 1)
     if app.diff_view.cursor >= total_lines {
         app.diff_view.cursor = total_lines.saturating_sub(1);
     }
-
-    // Ensure scroll keeps cursor visible
-    if app.diff_view.cursor < app.diff_view.scroll {
-        app.diff_view.scroll = app.diff_view.cursor;
-    } else if app.diff_view.cursor >= app.diff_view.scroll + viewport_height {
-        app.diff_view.scroll = app.diff_view.cursor + 1 - viewport_height;
+    if app.diff_view.cursor < frozen_rows {
+        app.diff_view.cursor = frozen_rows;
     }
 
-    if app.diff_view.scroll > max_scroll {
-        app.diff_view.scroll = max_scroll;
+    // Ensure scroll keeps cursor visible in content area
+    if app.diff_view.cursor < app.diff_view.scroll {
+        app.diff_view.scroll = app.diff_view.cursor;
+    } else if app.diff_view.cursor >= app.diff_view.scroll + content_height {
+        app.diff_view.scroll = app.diff_view.cursor + 1 - content_height;
+    }
+    if app.diff_view.scroll < frozen_rows {
+        app.diff_view.scroll = frozen_rows;
     }
 
     let cursor_line = app.diff_view.cursor;
@@ -150,11 +153,11 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
     };
 
     let scroll = app.diff_view.scroll;
-    let styled_lines: Vec<Line> = app.diff_view.cached_lines
+    let content_lines: Vec<Line> = app.diff_view.cached_lines
         .iter()
         .enumerate()
         .skip(scroll)
-        .take(viewport_height)
+        .take(content_height)
         .map(|(idx, line)| {
             let is_cursor = focused && idx == cursor_line;
             let is_selected = sel_range.map_or(false, |(lo, hi)| idx >= lo && idx <= hi);
@@ -225,16 +228,31 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
         })
         .collect();
 
-    // === Write directly to buffer — every cell is explicitly set ===
+    // === Write directly to buffer — frozen headers + scrollable content ===
     let buf = f.buffer_mut();
     let hscroll = app.diff_view.hscroll;
 
-    for row in 0..viewport_height {
-        let y = area.y + row as u16;
+    // Frozen header rows (always at top, no horizontal scroll)
+    for i in 0..frozen_rows {
+        let y = area.y + i as u16;
+        if y >= area.bottom() { break; }
+        if i < app.diff_view.cached_lines.len() {
+            write_row(buf, y, area, &app.diff_view.cached_lines[i], 0, default_style);
+        } else {
+            for x in area.x..area.right() {
+                buf[(x, y)].set_symbol(" ");
+                buf[(x, y)].set_style(default_style);
+            }
+        }
+    }
+
+    // Scrollable content rows
+    for row in 0..content_height {
+        let y = area.y + (frozen_rows + row) as u16;
         if y >= area.bottom() { break; }
 
-        if row < styled_lines.len() {
-            write_row(buf, y, area, &styled_lines[row], hscroll, default_style);
+        if row < content_lines.len() {
+            write_row(buf, y, area, &content_lines[row], hscroll, default_style);
         } else {
             for x in area.x..area.right() {
                 buf[(x, y)].set_symbol(" ");
