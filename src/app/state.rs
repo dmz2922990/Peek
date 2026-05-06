@@ -68,6 +68,8 @@ pub struct DiffViewState {
     pub cache_key: Option<(Option<usize>, Vec<(usize, usize)>)>,
     /// Cached rendered lines (syntax highlighted, no cursor/selection styling)
     pub cached_lines: Vec<Line<'static>>,
+    /// Horizontal scroll offset in display columns
+    pub hscroll: usize,
 }
 
 impl Default for DiffViewState {
@@ -92,6 +94,7 @@ impl Default for DiffViewState {
             jump_to_fold: None,
             cache_key: None,
             cached_lines: Vec::new(),
+            hscroll: 0,
         }
     }
 }

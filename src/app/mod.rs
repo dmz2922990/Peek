@@ -18,6 +18,7 @@ pub fn update(app: &mut App, msg: Message) -> Command {
             app.diff_data = files;
             app.diff_view.status_message = None;
             app.diff_view.cache_key = None;
+            app.diff_view.hscroll = 0;
             Command::None
         }
         Message::DiffError(e) => {
@@ -115,6 +116,16 @@ fn handle_diff_view_key(app: &mut App, key: KeyEvent) -> Command {
                 app.diff_view.scroll = app.diff_view.cursor;
             }
         }
+        return Command::None;
+    }
+
+    // Horizontal scroll (arrow keys and vim h/l)
+    if matches!(key.code, KeyCode::Right) || matches!(key.code, KeyCode::Char('l')) {
+        app.diff_view.hscroll += 4;
+        return Command::None;
+    }
+    if matches!(key.code, KeyCode::Left) || matches!(key.code, KeyCode::Char('h')) {
+        app.diff_view.hscroll = app.diff_view.hscroll.saturating_sub(4);
         return Command::None;
     }
 

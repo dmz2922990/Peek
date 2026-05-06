@@ -32,65 +32,32 @@ fn line_display_width(line: &Line) -> usize {
         .sum()
 }
 
-/// Truncate a line to fit within `max_width` display columns.
-fn truncate_line(line: &mut Line<'static>, max_width: usize) {
-    let mut acc: usize = 0;
-    let mut cut_span = line.spans.len();
-
-    for (i, span) in line.spans.iter().enumerate() {
-        let w = unicode_width::UnicodeWidthStr::width(span.content.as_ref());
-        if acc + w > max_width {
-            cut_span = i;
-            break;
-        }
-        acc += w;
-    }
-
-    if cut_span < line.spans.len() {
-        let remaining = max_width.saturating_sub(acc);
-        if remaining == 0 {
-            line.spans.truncate(cut_span);
-        } else {
-            let span = &mut line.spans[cut_span];
-            let mut truncated = String::new();
-            let mut w = 0;
-            for ch in span.content.chars() {
-                let cw = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
-                if w + cw > remaining {
-                    break;
-                }
-                truncated.push(ch);
-                w += cw;
-            }
-            span.content = truncated.into();
-            line.spans.truncate(cut_span + 1);
-        }
-    }
-}
-
-/// Ensure a line fills exactly `width` display columns — truncate if too wide, pad if too narrow.
-fn pad_line(line: &mut Line<'static>, width: usize, bg: ratatui::style::Color) {
+/// Pad a line with spaces if shorter than `min_width`. Never truncates —
+/// full content is preserved for horizontal scrolling.
+fn pad_line(line: &mut Line<'static>, min_width: usize, bg: ratatui::style::Color) {
     let current = line_display_width(line);
-    if current > width {
-        truncate_line(line, width);
-    }
-    let current = line_display_width(line);
-    if current < width {
+    if current < min_width {
         line.spans.push(Span::styled(
-            " ".repeat(width - current),
+            " ".repeat(min_width - current),
             Style::default().bg(bg),
         ));
     }
 }
 
-/// Write a single Line directly into the buffer, filling every cell in the row.
-fn write_row(buf: &mut ratatui::buffer::Buffer, y: u16, area: Rect, line: &Line, default_style: Style) {
+/// Write a single Line directly into the buffer with horizontal scroll offset.
+fn write_row(buf: &mut ratatui::buffer::Buffer, y: u16, area: Rect, line: &Line, hscroll: usize, default_style: Style) {
+    let mut skip = hscroll;
     let mut x: u16 = area.x;
     for span in &line.spans {
         if x >= area.right() { break; }
         for ch in span.content.chars() {
             let cw = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0) as u16;
-            if cw == 0 || x + cw > area.right() { continue; }
+            if cw == 0 { continue; }
+            if skip > 0 {
+                if cw as usize > skip { skip = 0; } else { skip -= cw as usize; }
+                continue;
+            }
+            if x + cw > area.right() { break; }
             buf[(x, y)].set_symbol(&ch.to_string());
             buf[(x, y)].set_style(span.style);
             for dx in 1..cw {
@@ -208,7 +175,15 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
                 let mut new_spans: Vec<Span> = Vec::new();
                 if is_diff_add || is_diff_del {
                     new_spans.push(Span::styled("▸".to_string(), arrow_style));
-                    for span in line.spans[1..].iter() {
+                    // Gutter (line number) — highlight with yellow
+                    if line.spans.len() > 1 {
+                        new_spans.push(Span::styled(
+                            line.spans[1].content.clone(),
+                            line.spans[1].style.patch(Style::default().bg(bg)).fg(theme::YELLOW),
+                        ));
+                    }
+                    // Remaining spans (code content)
+                    for span in line.spans[2..].iter() {
                         new_spans.push(Span::styled(
                             span.content.clone(),
                             span.style.patch(Style::default().bg(bg)),
@@ -252,13 +227,14 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
 
     // === Write directly to buffer — every cell is explicitly set ===
     let buf = f.buffer_mut();
+    let hscroll = app.diff_view.hscroll;
 
     for row in 0..viewport_height {
         let y = area.y + row as u16;
         if y >= area.bottom() { break; }
 
         if row < styled_lines.len() {
-            write_row(buf, y, area, &styled_lines[row], default_style);
+            write_row(buf, y, area, &styled_lines[row], hscroll, default_style);
         } else {
             for x in area.x..area.right() {
                 buf[(x, y)].set_symbol(" ");
