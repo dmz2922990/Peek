@@ -13,6 +13,10 @@ pub fn parse_diff(input: &str) -> Result<Vec<FileDiff>> {
 
     while lines.peek().is_some() {
         let file = parse_file(&mut lines)?;
+        // Skip entries with no displayable path (e.g. mode-only changes)
+        if file.display_path().as_os_str().is_empty() {
+            continue;
+        }
         files.push(file);
     }
 

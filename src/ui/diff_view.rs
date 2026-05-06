@@ -41,7 +41,8 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
 
     let block = Block::default()
         .borders(Borders::NONE)
-        .title(Span::styled(title, border_style));
+        .title(Span::styled(title, border_style))
+        .style(Style::default().bg(theme::DEFAULT_BG));
 
     if app.diff_data.is_empty() {
         let widget = Paragraph::new("No diff loaded. Run in a git repository with changes.")
@@ -167,12 +168,12 @@ fn build_lines(app: &App) -> (Vec<Line<'static>>, Vec<Option<(usize, Option<usiz
     // File header
     lines.push(Line::from(Span::styled(
         format!("--- {}", file.old_path.display()),
-        Style::default().fg(theme::TEXT_SECONDARY),
+        Style::default().fg(theme::TEXT_SECONDARY).bg(theme::DEFAULT_BG),
     )));
     line_map.push(None);
     lines.push(Line::from(Span::styled(
         format!("+++ {}", file.new_path.display()),
-        Style::default().fg(theme::TEXT_SECONDARY),
+        Style::default().fg(theme::TEXT_SECONDARY).bg(theme::DEFAULT_BG),
     )));
     line_map.push(None);
 
@@ -251,7 +252,7 @@ fn build_lines(app: &App) -> (Vec<Line<'static>>, Vec<Option<(usize, Option<usiz
         };
         lines.push(Line::from(Span::styled(
             header_text,
-            Style::default().fg(theme::CYAN).add_modifier(Modifier::BOLD),
+            Style::default().fg(theme::CYAN).add_modifier(Modifier::BOLD).bg(theme::DEFAULT_BG),
         )));
         line_map.push(None);
 
@@ -311,10 +312,10 @@ fn get_source_line(lines: &[String], line_no: usize) -> Option<String> {
 fn make_diff_line(dl: &DiffLine, highlighter: &mut SyntaxHighlighter) -> Line<'static> {
     match dl {
         DiffLine::Context { content, new_line, .. } => {
-            let gutter = Span::styled(format!(" {:>4} ", new_line), Style::default().fg(theme::TEXT_SECONDARY));
+            let gutter = Span::styled(format!(" {:>4} ", new_line), Style::default().fg(theme::TEXT_SECONDARY).bg(theme::DEFAULT_BG));
             let mut spans = vec![gutter];
             for (style, text) in highlighter.highlight_line(content) {
-                spans.push(Span::styled(format!(" {}", text), style));
+                spans.push(Span::styled(format!(" {}", text), style.bg(theme::DEFAULT_BG)));
             }
             Line::from(spans)
         }
@@ -340,40 +341,40 @@ fn make_diff_line(dl: &DiffLine, highlighter: &mut SyntaxHighlighter) -> Line<'s
 }
 
 fn make_expanded_context_line(content: &str, _old_line: usize, new_line: usize, highlighter: &mut SyntaxHighlighter) -> Line<'static> {
-    let gutter = Span::styled(format!(" {:>4} ", new_line), Style::default().fg(theme::BLUE));
+    let gutter = Span::styled(format!(" {:>4} ", new_line), Style::default().fg(theme::BLUE).bg(theme::DEFAULT_BG));
     let mut spans = vec![gutter];
     for (style, text) in highlighter.highlight_line(content) {
-        spans.push(Span::styled(format!(" {}", text), style));
+        spans.push(Span::styled(format!(" {}", text), style.bg(theme::DEFAULT_BG)));
     }
     Line::from(spans)
 }
 
 fn make_fold_line(hidden: usize) -> Line<'static> {
     Line::from(vec![
-        Span::styled("  ", Style::default()),
+        Span::styled("  ", Style::default().bg(theme::DEFAULT_BG)),
         Span::styled(
             format!("· · · {} line{} hidden · · ·", hidden, if hidden > 1 { "s" } else { "" }),
-            Style::default().fg(theme::BLUE).add_modifier(Modifier::DIM),
+            Style::default().fg(theme::BLUE).add_modifier(Modifier::DIM).bg(theme::DEFAULT_BG),
         ),
     ])
 }
 
 fn make_fold_line_down(hidden: usize) -> Line<'static> {
     Line::from(vec![
-        Span::styled("  ", Style::default()),
+        Span::styled("  ", Style::default().bg(theme::DEFAULT_BG)),
         Span::styled(
             format!("↓ · · · {} line{} hidden · · ·", hidden, if hidden > 1 { "s" } else { "" }),
-            Style::default().fg(theme::BLUE).add_modifier(Modifier::DIM),
+            Style::default().fg(theme::BLUE).add_modifier(Modifier::DIM).bg(theme::DEFAULT_BG),
         ),
     ])
 }
 
 fn make_fold_line_up(hidden: usize) -> Line<'static> {
     Line::from(vec![
-        Span::styled("  ", Style::default()),
+        Span::styled("  ", Style::default().bg(theme::DEFAULT_BG)),
         Span::styled(
             format!("↑ · · · {} line{} hidden · · ·", hidden, if hidden > 1 { "s" } else { "" }),
-            Style::default().fg(theme::BLUE).add_modifier(Modifier::DIM),
+            Style::default().fg(theme::BLUE).add_modifier(Modifier::DIM).bg(theme::DEFAULT_BG),
         ),
     ])
 }

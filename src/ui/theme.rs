@@ -25,3 +25,6 @@ pub const MAGENTA: Color = Color::Rgb(180, 100, 220);
 // -- Diff overlay backgrounds (subtle tinting) --
 pub const ADD_BG: Color = Color::Rgb(30, 55, 35);
 pub const DELETE_BG: Color = Color::Rgb(55, 30, 30);
+
+// -- Default widget background (clears ghost characters) --
+pub const DEFAULT_BG: Color = Color::Rgb(22, 22, 30);
