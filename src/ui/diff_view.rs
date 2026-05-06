@@ -335,7 +335,7 @@ fn make_diff_line(dl: &DiffLine, highlighter: &mut SyntaxHighlighter) -> Line<'s
             let gutter = Span::styled(format!(" {:>4} ", new_line), Style::default().fg(theme::TEXT_SECONDARY).bg(theme::DEFAULT_BG));
             let mut spans = vec![gutter];
             for (style, text) in highlighter.highlight_line(content) {
-                spans.push(Span::styled(format!(" {}", text), style.bg(theme::DEFAULT_BG)));
+                spans.push(Span::styled(text, style.bg(theme::DEFAULT_BG)));
             }
             Line::from(spans)
         }
@@ -344,7 +344,7 @@ fn make_diff_line(dl: &DiffLine, highlighter: &mut SyntaxHighlighter) -> Line<'s
             let gutter = Span::styled(format!("{:>4} ", new_line), Style::default().fg(theme::TEXT_SECONDARY).bg(theme::ADD_BG));
             let mut spans = vec![bar, gutter];
             for (style, text) in highlighter.highlight_line(content) {
-                spans.push(Span::styled(format!(" {}", text), style.bg(theme::ADD_BG)));
+                spans.push(Span::styled(text, style.bg(theme::ADD_BG)));
             }
             Line::from(spans)
         }
@@ -353,7 +353,7 @@ fn make_diff_line(dl: &DiffLine, highlighter: &mut SyntaxHighlighter) -> Line<'s
             let gutter = Span::styled("     ".to_string(), Style::default().bg(theme::DELETE_BG));
             let mut spans = vec![bar, gutter];
             for (style, text) in highlighter.highlight_line(content) {
-                spans.push(Span::styled(format!(" {}", text), style.bg(theme::DELETE_BG)));
+                spans.push(Span::styled(text, style.bg(theme::DELETE_BG)));
             }
             Line::from(spans)
         }
@@ -364,7 +364,7 @@ fn make_expanded_context_line(content: &str, _old_line: usize, new_line: usize, 
     let gutter = Span::styled(format!(" {:>4} ", new_line), Style::default().fg(theme::BLUE).bg(theme::DEFAULT_BG));
     let mut spans = vec![gutter];
     for (style, text) in highlighter.highlight_line(content) {
-        spans.push(Span::styled(format!(" {}", text), style.bg(theme::DEFAULT_BG)));
+        spans.push(Span::styled(text, style.bg(theme::DEFAULT_BG)));
     }
     Line::from(spans)
 }
