@@ -7,7 +7,7 @@ pub mod git_dialog;
 pub mod find_bar;
 pub mod help;
 
-use ratatui::{Frame, layout::{Constraint, Direction, Layout}};
+use ratatui::{Frame, layout::{Constraint, Direction, Layout}, widgets::Clear};
 
 use crate::app::state::{App, AppMode};
 
@@ -25,6 +25,9 @@ pub fn draw(f: &mut Frame, app: &mut App) {
 
     // Main area: file tree + diff view
     if app.file_tree.visible {
+        // Clear entire main area first to prevent ghost characters
+        f.render_widget(Clear, main_area);
+
         let width_pct = app.config.diff.file_tree_width_percent;
         let tree_on_right = app.config.diff.file_tree_position == "right";
 

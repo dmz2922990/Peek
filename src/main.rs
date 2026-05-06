@@ -18,9 +18,16 @@ use peek::ui;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    if std::env::args().any(|arg| arg == "--version" || arg == "-V") {
+    let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|arg| arg == "--version" || arg == "-V") {
         println!("peek {}", env!("CARGO_PKG_VERSION"));
         return Ok(());
+    }
+
+    // Change working directory if a path argument is provided
+    // Skip arg[0] (program name) and filter out flags
+    if let Some(path) = args.iter().skip(1).find(|a| !a.starts_with('-')) {
+        std::env::set_current_dir(path)?;
     }
 
     let cfg = config::load();

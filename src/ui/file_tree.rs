@@ -3,7 +3,7 @@ use ratatui::{
     layout::Rect,
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, ListState},
+    widgets::{Block, Borders, Clear, List, ListItem, ListState},
 };
 
 use crate::app::state::App;
@@ -55,5 +55,6 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect, focused: bool) {
     let mut state = ListState::default();
     state.select(Some(app.file_tree.selected));
 
+    f.render_widget(Clear, area);
     f.render_stateful_widget(list, area, &mut state);
 }

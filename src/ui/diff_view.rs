@@ -6,7 +6,6 @@ use ratatui::{
     layout::Rect,
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph},
 };
 
 use crate::app::state::{App, AppMode};
@@ -26,29 +25,104 @@ fn cache_key(app: &App) -> (Option<usize>, Vec<(usize, usize)>) {
     (file_idx, folds)
 }
 
+/// Calculate the display width of a line (unicode-aware).
+fn line_display_width(line: &Line) -> usize {
+    line.spans.iter()
+        .map(|s| unicode_width::UnicodeWidthStr::width(s.content.as_ref()))
+        .sum()
+}
+
+/// Truncate a line to fit within `max_width` display columns.
+fn truncate_line(line: &mut Line<'static>, max_width: usize) {
+    let mut acc: usize = 0;
+    let mut cut_span = line.spans.len();
+
+    for (i, span) in line.spans.iter().enumerate() {
+        let w = unicode_width::UnicodeWidthStr::width(span.content.as_ref());
+        if acc + w > max_width {
+            cut_span = i;
+            break;
+        }
+        acc += w;
+    }
+
+    if cut_span < line.spans.len() {
+        let remaining = max_width.saturating_sub(acc);
+        if remaining == 0 {
+            line.spans.truncate(cut_span);
+        } else {
+            let span = &mut line.spans[cut_span];
+            let mut truncated = String::new();
+            let mut w = 0;
+            for ch in span.content.chars() {
+                let cw = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
+                if w + cw > remaining {
+                    break;
+                }
+                truncated.push(ch);
+                w += cw;
+            }
+            span.content = truncated.into();
+            line.spans.truncate(cut_span + 1);
+        }
+    }
+}
+
+/// Ensure a line fills exactly `width` display columns — truncate if too wide, pad if too narrow.
+fn pad_line(line: &mut Line<'static>, width: usize, bg: ratatui::style::Color) {
+    let current = line_display_width(line);
+    if current > width {
+        truncate_line(line, width);
+    }
+    let current = line_display_width(line);
+    if current < width {
+        line.spans.push(Span::styled(
+            " ".repeat(width - current),
+            Style::default().bg(bg),
+        ));
+    }
+}
+
+/// Write a single Line directly into the buffer, filling every cell in the row.
+fn write_row(buf: &mut ratatui::buffer::Buffer, y: u16, area: Rect, line: &Line, default_style: Style) {
+    let mut x: u16 = area.x;
+    for span in &line.spans {
+        if x >= area.right() { break; }
+        for ch in span.content.chars() {
+            let cw = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0) as u16;
+            if cw == 0 || x + cw > area.right() { continue; }
+            buf[(x, y)].set_symbol(&ch.to_string());
+            buf[(x, y)].set_style(span.style);
+            for dx in 1..cw {
+                if x + dx < area.right() {
+                    buf[(x + dx, y)].set_symbol(" ");
+                    buf[(x + dx, y)].set_style(span.style);
+                }
+            }
+            x += cw;
+        }
+    }
+    // Fill remaining cells in row
+    while x < area.right() {
+        buf[(x, y)].set_symbol(" ");
+        buf[(x, y)].set_style(default_style);
+        x += 1;
+    }
+}
+
 pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
-    let border_style = if focused {
-        Style::default().fg(theme::CYAN)
-    } else {
-        Style::default().fg(theme::UNFOCUSED_BORDER)
-    };
-
-    let title = match app.mode {
-        AppMode::VisualSelect => " VISUAL ",
-        _ if focused => " Diff ◂ ",
-        _ => " Diff ",
-    };
-
-    let block = Block::default()
-        .borders(Borders::NONE)
-        .title(Span::styled(title, border_style))
-        .style(Style::default().bg(theme::DEFAULT_BG));
+    let default_style = Style::default().bg(theme::DEFAULT_BG);
 
     if app.diff_data.is_empty() {
-        let widget = Paragraph::new("No diff loaded. Run in a git repository with changes.")
-            .style(Style::default().fg(theme::TEXT_SECONDARY))
-            .block(block);
-        f.render_widget(widget, area);
+        let buf = f.buffer_mut();
+        for y in area.top()..area.bottom() {
+            for x in area.left()..area.right() {
+                buf[(x, y)].set_symbol(" ");
+                buf[(x, y)].set_style(default_style);
+            }
+        }
+        buf.set_string(area.x, area.y, "No diff loaded. Run in a git repository with changes.",
+            Style::default().fg(theme::TEXT_SECONDARY).bg(theme::DEFAULT_BG));
         return;
     }
 
@@ -72,7 +146,7 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
     }
 
     let total_lines = app.diff_view.cached_lines.len();
-    let viewport_height = area.height.saturating_sub(1) as usize;
+    let viewport_height = area.height as usize;
     app.diff_view.viewport_height = viewport_height;
     let max_scroll = total_lines.saturating_sub(viewport_height);
 
@@ -93,6 +167,7 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
     }
 
     let cursor_line = app.diff_view.cursor;
+    let width = area.width as usize;
 
     // Compute visual select range
     let sel_range = if app.mode == AppMode::VisualSelect {
@@ -108,7 +183,7 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
     };
 
     let scroll = app.diff_view.scroll;
-    let visible_lines: Vec<Line> = app.diff_view.cached_lines
+    let styled_lines: Vec<Line> = app.diff_view.cached_lines
         .iter()
         .enumerate()
         .skip(scroll)
@@ -129,15 +204,10 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
                 } else {
                     theme::SELECTION_BG
                 };
-                let arrow = Span::styled("▸", Style::default().fg(theme::YELLOW).add_modifier(Modifier::BOLD).bg(bg));
+                let arrow_style = Style::default().fg(theme::YELLOW).add_modifier(Modifier::BOLD).bg(bg);
                 let mut new_spans: Vec<Span> = Vec::new();
-                // On diff lines the first span is the ▎ bar — place arrow after it
                 if is_diff_add || is_diff_del {
-                    new_spans.push(Span::styled(
-                        line.spans[0].content.clone(),
-                        line.spans[0].style.patch(Style::default().bg(bg)),
-                    ));
-                    new_spans.push(arrow);
+                    new_spans.push(Span::styled("▸".to_string(), arrow_style));
                     for span in line.spans[1..].iter() {
                         new_spans.push(Span::styled(
                             span.content.clone(),
@@ -145,15 +215,23 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
                         ));
                     }
                 } else {
-                    new_spans.push(arrow);
-                    for span in line.spans.iter() {
+                    let first = &line.spans[0];
+                    let new_content = if first.content.starts_with(' ') {
+                        format!("▸{}", &first.content[1..])
+                    } else {
+                        format!("▸{}", first.content)
+                    };
+                    new_spans.push(Span::styled(new_content, first.style.patch(Style::default().bg(bg)).fg(theme::YELLOW).add_modifier(Modifier::BOLD)));
+                    for span in line.spans[1..].iter() {
                         new_spans.push(Span::styled(
                             span.content.clone(),
                             span.style.patch(Style::default().bg(bg)),
                         ));
                     }
                 }
-                Line::from(new_spans)
+                let mut l = Line::from(new_spans);
+                pad_line(&mut l, width, bg);
+                l
             } else if is_selected {
                 let spans: Vec<Span> = line.spans.iter().map(|span| {
                     Span::styled(
@@ -161,17 +239,33 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
                         span.style.patch(Style::default().bg(theme::VISUAL_SELECT_RANGE)),
                     )
                 }).collect();
-                Line::from(spans)
+                let mut l = Line::from(spans);
+                pad_line(&mut l, width, theme::VISUAL_SELECT_RANGE);
+                l
             } else {
-                line.clone()
+                let mut l = line.clone();
+                pad_line(&mut l, width, theme::DEFAULT_BG);
+                l
             }
         })
         .collect();
 
-    let widget = Paragraph::new(visible_lines)
-        .style(Style::default().bg(theme::DEFAULT_BG))
-        .block(block);
-    f.render_widget(widget, area);
+    // === Write directly to buffer — every cell is explicitly set ===
+    let buf = f.buffer_mut();
+
+    for row in 0..viewport_height {
+        let y = area.y + row as u16;
+        if y >= area.bottom() { break; }
+
+        if row < styled_lines.len() {
+            write_row(buf, y, area, &styled_lines[row], default_style);
+        } else {
+            for x in area.x..area.right() {
+                buf[(x, y)].set_symbol(" ");
+                buf[(x, y)].set_style(default_style);
+            }
+        }
+    }
 }
 
 /// Build all rendered lines with syntax highlighting. Called only on cache miss.
@@ -207,7 +301,6 @@ fn build_lines(app: &App) -> (Vec<Line<'static>>, Vec<Option<(usize, Option<usiz
         let down_count = expanded_folds.get(&down_key).copied().unwrap_or(0);
         let up_count = expanded_folds.get(&up_key).copied().unwrap_or(0);
 
-        // ── Fold indicator / expanded context before hunk ──
         let prev_hunk_end = if hunk_idx == 0 {
             1
         } else {
@@ -281,7 +374,7 @@ fn build_lines(app: &App) -> (Vec<Line<'static>>, Vec<Option<(usize, Option<usiz
             line_map.push(Some((hunk_idx, Some(line_idx))));
         }
 
-        // ── Fold / expanded context after last hunk ──
+        // Fold / expanded context after last hunk
         if hunk_idx == file.hunks.len() - 1 {
             let after_start = hunk.new_start + hunk.new_count;
             let total_file_lines = source_lines.len();
