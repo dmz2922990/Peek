@@ -326,6 +326,14 @@ fn handle_file_tree_key(app: &mut App, key: KeyEvent) -> Command {
             app.mode = AppMode::DiffViewFocus;
             Command::None
         }
+        KeyCode::Char('y') => {
+            if let Some(file) = app.diff_data.get(app.file_tree.selected) {
+                let path = file.display_path().display().to_string();
+                app.diff_view.status_message = Some(format!("Copied: {}", path));
+                return Command::CopyToClipboard(path);
+            }
+            Command::None
+        }
         _ => Command::None,
     }
 }
