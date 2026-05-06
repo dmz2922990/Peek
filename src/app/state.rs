@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use ratatui::text::Line;
+
 use crate::config::types::Config;
 use crate::diff::types::{DiffMode, FileDiff};
 
@@ -56,6 +58,10 @@ pub struct DiffViewState {
     pub fold_positions: Vec<(usize, usize)>,
     /// After expansion, jump cursor to this fold's new position (resolved after render)
     pub jump_to_fold: Option<usize>,
+    /// Cache key: (selected_file_index, expanded_folds clone) — used to detect when rebuild is needed
+    pub cache_key: Option<(Option<usize>, Vec<(usize, usize)>)>,
+    /// Cached rendered lines (syntax highlighted, no cursor/selection styling)
+    pub cached_lines: Vec<Line<'static>>,
 }
 
 impl Default for DiffViewState {
@@ -78,6 +84,8 @@ impl Default for DiffViewState {
             expanded_folds: HashMap::new(),
             fold_positions: Vec::new(),
             jump_to_fold: None,
+            cache_key: None,
+            cached_lines: Vec::new(),
         }
     }
 }

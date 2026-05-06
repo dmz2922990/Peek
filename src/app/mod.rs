@@ -17,6 +17,7 @@ pub fn update(app: &mut App, msg: Message) -> Command {
         Message::DiffLoaded(files) => {
             app.diff_data = files;
             app.diff_view.status_message = None;
+            app.diff_view.cache_key = None;
             Command::None
         }
         Message::DiffError(e) => {

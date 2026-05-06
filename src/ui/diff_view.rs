@@ -14,6 +14,18 @@ use crate::diff::types::DiffLine;
 use crate::syntax::SyntaxHighlighter;
 use crate::ui::theme;
 
+/// Build cache key from current file selection and fold state.
+fn cache_key(app: &App) -> (Option<usize>, Vec<(usize, usize)>) {
+    let file_idx = if app.diff_data.is_empty() {
+        None
+    } else {
+        Some(app.file_tree.selected)
+    };
+    let mut folds: Vec<(usize, usize)> = app.diff_view.expanded_folds.iter().map(|(k, v)| (*k, *v)).collect();
+    folds.sort_unstable();
+    (file_idx, folds)
+}
+
 pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
     let border_style = if focused {
         Style::default().fg(theme::CYAN)
@@ -39,13 +51,116 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
         return;
     }
 
+    // Rebuild cached lines only when file or fold state changes
+    let key = cache_key(app);
+    let needs_rebuild = app.diff_view.cache_key.as_ref() != Some(&key);
+    if needs_rebuild {
+        let (lines, line_map, fold_positions) = build_lines(app);
+        app.diff_view.total_lines = lines.len();
+        app.diff_view.rendered_line_map = line_map;
+        app.diff_view.fold_positions = fold_positions;
+        app.diff_view.cached_lines = lines;
+        app.diff_view.cache_key = Some(key);
+    }
+
+    // Resolve pending fold jump
+    if let Some(target) = app.diff_view.jump_to_fold.take() {
+        if let Some((pos, _)) = app.diff_view.fold_positions.iter().find(|(_, t)| *t == target) {
+            app.diff_view.cursor = *pos;
+        }
+    }
+
+    let total_lines = app.diff_view.cached_lines.len();
+    let viewport_height = area.height.saturating_sub(1) as usize;
+    app.diff_view.viewport_height = viewport_height;
+    let max_scroll = total_lines.saturating_sub(viewport_height);
+
+    // Clamp cursor
+    if app.diff_view.cursor >= total_lines {
+        app.diff_view.cursor = total_lines.saturating_sub(1);
+    }
+
+    // Ensure scroll keeps cursor visible
+    if app.diff_view.cursor < app.diff_view.scroll {
+        app.diff_view.scroll = app.diff_view.cursor;
+    } else if app.diff_view.cursor >= app.diff_view.scroll + viewport_height {
+        app.diff_view.scroll = app.diff_view.cursor + 1 - viewport_height;
+    }
+
+    if app.diff_view.scroll > max_scroll {
+        app.diff_view.scroll = max_scroll;
+    }
+
+    let cursor_line = app.diff_view.cursor;
+
+    // Compute visual select range
+    let sel_range = if app.mode == AppMode::VisualSelect {
+        app.diff_view.selection_start.and_then(|start| {
+            app.diff_view.selection_end.map(|end| {
+                let lo = start.min(end);
+                let hi = start.max(end);
+                (lo, hi)
+            })
+        })
+    } else {
+        None
+    };
+
+    let scroll = app.diff_view.scroll;
+    let visible_lines: Vec<Line> = app.diff_view.cached_lines
+        .iter()
+        .enumerate()
+        .skip(scroll)
+        .take(viewport_height)
+        .map(|(idx, line)| {
+            let is_cursor = focused && idx == cursor_line;
+            let is_selected = sel_range.map_or(false, |(lo, hi)| idx >= lo && idx <= hi);
+
+            if is_cursor {
+                let arrow = Span::styled("▸", Style::default().fg(theme::YELLOW).add_modifier(Modifier::BOLD));
+                let mut new_spans: Vec<Span> = Vec::new();
+                let is_diff_add = line.spans.first().map_or(false, |s| s.content == "▎" && s.style.fg == Some(theme::GREEN));
+                let is_diff_del = line.spans.first().map_or(false, |s| s.content == "▎" && s.style.fg == Some(theme::RED));
+                // On diff lines the first span is the ▎ bar — place arrow after it
+                if is_diff_add || is_diff_del {
+                    new_spans.push(line.spans[0].clone());
+                    new_spans.push(arrow);
+                    new_spans.extend(line.spans[1..].iter().cloned());
+                } else {
+                    new_spans.push(arrow);
+                    new_spans.extend(line.spans.iter().cloned());
+                }
+                let bg = if is_selected {
+                    theme::VISUAL_SELECT_CURSOR
+                } else if is_diff_add {
+                    theme::ADD_BG
+                } else if is_diff_del {
+                    theme::DELETE_BG
+                } else {
+                    theme::SELECTION_BG
+                };
+                Line::from(new_spans).patch_style(Style::default().bg(bg))
+            } else if is_selected {
+                let spans = line.spans.iter().cloned().collect::<Vec<_>>();
+                Line::from(spans).patch_style(Style::default().bg(theme::VISUAL_SELECT_RANGE))
+            } else {
+                line.clone()
+            }
+        })
+        .collect();
+
+    let widget = Paragraph::new(visible_lines).block(block);
+    f.render_widget(widget, area);
+}
+
+/// Build all rendered lines with syntax highlighting. Called only on cache miss.
+fn build_lines(app: &App) -> (Vec<Line<'static>>, Vec<Option<(usize, Option<usize>)>>, Vec<(usize, usize)>) {
     let file = app.current_file().or_else(|| app.diff_data.first());
     let Some(file) = file else {
-        return;
+        return (Vec::new(), Vec::new(), Vec::new());
     };
 
     let mut lines: Vec<Line> = Vec::new();
-    // (hunk_idx, Some(line_idx)) = diff line, (hunk_idx, None) = expanded context, None = header/fold
     let mut line_map: Vec<Option<(usize, Option<usize>)>> = Vec::new();
     let mut fold_positions: Vec<(usize, usize)> = Vec::new();
 
@@ -61,7 +176,6 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
     )));
     line_map.push(None);
 
-    // Load source file for context expansion
     let source_lines = load_source_lines(&file.new_path);
     let mut highlighter = SyntaxHighlighter::new(&file.new_path);
     let expanded_folds = &app.diff_view.expanded_folds;
@@ -84,7 +198,6 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
         if gap > 0 {
             let total_shown = down_count + up_count;
             if total_shown >= gap {
-                // All context visible
                 for line_no in prev_hunk_end..current_hunk_start {
                     if let Some(content) = get_source_line(&source_lines, line_no) {
                         lines.push(make_expanded_context_line(&content, line_no, line_no, &mut highlighter));
@@ -95,7 +208,6 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
                 let hidden = gap - total_shown;
                 let use_dual = gap > app.config.diff.default_context_lines;
 
-                // Context expanded from top
                 for i in 0..down_count {
                     let line_no = prev_hunk_end + i;
                     if let Some(content) = get_source_line(&source_lines, line_no) {
@@ -105,26 +217,22 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
                 }
 
                 if use_dual {
-                    // ↓ fold indicator
                     let fold_idx = lines.len();
                     lines.push(make_fold_line_down(hidden));
                     line_map.push(None);
                     fold_positions.push((fold_idx, down_key));
 
-                    // ↑ fold indicator
                     let fold_idx = lines.len();
                     lines.push(make_fold_line_up(hidden));
                     line_map.push(None);
                     fold_positions.push((fold_idx, up_key));
                 } else {
-                    // Single fold indicator for small gap
                     let fold_idx = lines.len();
                     lines.push(make_fold_line(hidden));
                     line_map.push(None);
                     fold_positions.push((fold_idx, down_key));
                 }
 
-                // Context expanded from bottom
                 for i in 0..up_count {
                     let line_no = current_hunk_start - up_count + i;
                     if let Some(content) = get_source_line(&source_lines, line_no) {
@@ -186,85 +294,7 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
         }
     }
 
-    // Write state back for key handler
-    let total_lines = lines.len();
-    app.diff_view.total_lines = total_lines;
-    app.diff_view.rendered_line_map = line_map;
-    app.diff_view.fold_positions = fold_positions;
-
-    // Resolve pending fold jump: move cursor to the new fold position
-    if let Some(target) = app.diff_view.jump_to_fold.take() {
-        if let Some((pos, _)) = app.diff_view.fold_positions.iter().find(|(_, t)| *t == target) {
-            app.diff_view.cursor = *pos;
-        }
-    }
-
-    let viewport_height = area.height.saturating_sub(1) as usize;
-    app.diff_view.viewport_height = viewport_height;
-    let max_scroll = total_lines.saturating_sub(viewport_height);
-
-    // Clamp cursor within [0, total_lines-1]
-    if app.diff_view.cursor >= total_lines {
-        app.diff_view.cursor = total_lines.saturating_sub(1);
-    }
-
-    // Ensure scroll keeps cursor visible: scroll <= cursor <= scroll + viewport - 1
-    if app.diff_view.cursor < app.diff_view.scroll {
-        app.diff_view.scroll = app.diff_view.cursor;
-    } else if app.diff_view.cursor >= app.diff_view.scroll + viewport_height {
-        app.diff_view.scroll = app.diff_view.cursor + 1 - viewport_height;
-    }
-
-    // Clamp scroll and write back to app state
-    if app.diff_view.scroll > max_scroll {
-        app.diff_view.scroll = max_scroll;
-    }
-
-    let cursor_line = app.diff_view.cursor;
-
-    // Compute visual select range
-    let sel_range = if app.mode == AppMode::VisualSelect {
-        app.diff_view.selection_start.and_then(|start| {
-            app.diff_view.selection_end.map(|end| {
-                let lo = start.min(end);
-                let hi = start.max(end);
-                (lo, hi)
-            })
-        })
-    } else {
-        None
-    };
-
-    let visible_lines: Vec<Line> = lines
-        .into_iter()
-        .enumerate()
-        .skip(app.diff_view.scroll)
-        .take(viewport_height)
-        .map(|(idx, mut line)| {
-            let is_cursor = focused && idx == cursor_line;
-            let is_selected = sel_range.map_or(false, |(lo, hi)| idx >= lo && idx <= hi);
-
-            if is_cursor {
-                let mut new_spans = vec![
-                    Span::styled("▸", Style::default().fg(theme::YELLOW).add_modifier(Modifier::BOLD)),
-                ];
-                new_spans.append(&mut line.spans);
-                let bg = if is_selected { theme::VISUAL_SELECT_CURSOR } else { theme::SELECTION_BG };
-                Line::from(new_spans).patch_style(Style::default().bg(bg))
-            } else if is_selected {
-                Line::from(
-                    std::mem::take(&mut line.spans)
-                ).patch_style(Style::default().bg(theme::VISUAL_SELECT_RANGE))
-            } else {
-                line
-            }
-        })
-        .collect();
-
-    let widget = Paragraph::new(visible_lines)
-        .block(block);
-
-    f.render_widget(widget, area);
+    (lines, line_map, fold_positions)
 }
 
 fn load_source_lines(path: &Path) -> Vec<String> {
@@ -280,8 +310,8 @@ fn get_source_line(lines: &[String], line_no: usize) -> Option<String> {
 
 fn make_diff_line(dl: &DiffLine, highlighter: &mut SyntaxHighlighter) -> Line<'static> {
     match dl {
-        DiffLine::Context { content, old_line, new_line } => {
-            let gutter = Span::styled(format!(" {:>4} {:>4} ", old_line, new_line), Style::default().fg(theme::TEXT_SECONDARY));
+        DiffLine::Context { content, new_line, .. } => {
+            let gutter = Span::styled(format!(" {:>4} ", new_line), Style::default().fg(theme::TEXT_SECONDARY));
             let mut spans = vec![gutter];
             for (style, text) in highlighter.highlight_line(content) {
                 spans.push(Span::styled(format!(" {}", text), style));
@@ -289,22 +319,28 @@ fn make_diff_line(dl: &DiffLine, highlighter: &mut SyntaxHighlighter) -> Line<'s
             Line::from(spans)
         }
         DiffLine::Add { content, new_line } => {
-            Line::from(vec![
-                Span::styled(format!("      {:>4} ", new_line), Style::default().fg(theme::TEXT_SECONDARY)),
-                Span::styled(format!("+{}", content), Style::default().fg(theme::GREEN)),
-            ])
+            let bar = Span::styled("▎".to_string(), Style::default().fg(theme::GREEN).bg(theme::ADD_BG));
+            let gutter = Span::styled(format!("{:>4} ", new_line), Style::default().fg(theme::TEXT_SECONDARY).bg(theme::ADD_BG));
+            let mut spans = vec![bar, gutter];
+            for (style, text) in highlighter.highlight_line(content) {
+                spans.push(Span::styled(format!(" {}", text), style.bg(theme::ADD_BG)));
+            }
+            Line::from(spans)
         }
-        DiffLine::Delete { content, old_line } => {
-            Line::from(vec![
-                Span::styled(format!(" {:>4}      ", old_line), Style::default().fg(theme::TEXT_SECONDARY)),
-                Span::styled(format!("-{}", content), Style::default().fg(theme::RED)),
-            ])
+        DiffLine::Delete { content, .. } => {
+            let bar = Span::styled("▎".to_string(), Style::default().fg(theme::RED).bg(theme::DELETE_BG));
+            let gutter = Span::styled("     ".to_string(), Style::default().bg(theme::DELETE_BG));
+            let mut spans = vec![bar, gutter];
+            for (style, text) in highlighter.highlight_line(content) {
+                spans.push(Span::styled(format!(" {}", text), style.bg(theme::DELETE_BG)));
+            }
+            Line::from(spans)
         }
     }
 }
 
-fn make_expanded_context_line(content: &str, old_line: usize, new_line: usize, highlighter: &mut SyntaxHighlighter) -> Line<'static> {
-    let gutter = Span::styled(format!(" {:>4} {:>4} ", old_line, new_line), Style::default().fg(theme::BLUE));
+fn make_expanded_context_line(content: &str, _old_line: usize, new_line: usize, highlighter: &mut SyntaxHighlighter) -> Line<'static> {
+    let gutter = Span::styled(format!(" {:>4} ", new_line), Style::default().fg(theme::BLUE));
     let mut spans = vec![gutter];
     for (style, text) in highlighter.highlight_line(content) {
         spans.push(Span::styled(format!(" {}", text), style));

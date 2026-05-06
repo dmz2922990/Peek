@@ -9,40 +9,40 @@ use syntect::parsing::SyntaxSet;
 
 use crate::ui::theme;
 
+static SYNTAX_SET: std::sync::OnceLock<SyntaxSet> = std::sync::OnceLock::new();
+static PEEK_THEME: std::sync::OnceLock<Theme> = std::sync::OnceLock::new();
+
 pub struct SyntaxHighlighter {
     highlighter: Option<HighlightLines<'static>>,
-    syntax_set: SyntaxSet,
 }
 
 impl SyntaxHighlighter {
     pub fn new(file_path: &Path) -> Self {
-        let syntax_set = SyntaxSet::load_defaults_newlines();
-        let syntax = syntax_set
+        let ss = SYNTAX_SET.get_or_init(SyntaxSet::load_defaults_newlines);
+        let theme = PEEK_THEME.get_or_init(peek_theme);
+
+        let syntax = ss
             .find_syntax_for_file(file_path)
             .ok()
             .flatten()
-            .cloned()
             .or_else(|| {
                 file_path
                     .extension()
                     .and_then(|ext| ext.to_str())
-                    .and_then(|ext| syntax_set.find_syntax_by_extension(ext).cloned())
+                    .and_then(|ext| ss.find_syntax_by_extension(ext))
             });
 
         let highlighter = syntax.map(|syntax| {
-            let theme = Box::leak(Box::new(peek_theme()));
-            HighlightLines::new(&syntax, theme)
+            HighlightLines::new(syntax, theme)
         });
 
-        Self {
-            highlighter,
-            syntax_set,
-        }
+        Self { highlighter }
     }
 
     pub fn highlight_line(&mut self, line: &str) -> Vec<(Style, String)> {
+        let ss = SYNTAX_SET.get().unwrap();
         if let Some(ref mut hl) = self.highlighter {
-            if let Ok(ranges) = hl.highlight_line(line, &self.syntax_set) {
+            if let Ok(ranges) = hl.highlight_line(line, ss) {
                 let mut result: Vec<(Style, String)> = Vec::with_capacity(ranges.len());
                 for (style, text) in ranges {
                     let ratatui_style = syntect_style_to_ratatui(style);

@@ -21,3 +21,7 @@ pub const RED: Color = Color::Rgb(220, 80, 80);
 pub const YELLOW: Color = Color::Rgb(220, 200, 80);
 pub const BLUE: Color = Color::Rgb(100, 150, 230);
 pub const MAGENTA: Color = Color::Rgb(180, 100, 220);
+
+// -- Diff overlay backgrounds (subtle tinting) --
+pub const ADD_BG: Color = Color::Rgb(30, 55, 35);
+pub const DELETE_BG: Color = Color::Rgb(55, 30, 30);
