@@ -118,19 +118,8 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
             let is_selected = sel_range.map_or(false, |(lo, hi)| idx >= lo && idx <= hi);
 
             if is_cursor {
-                let arrow = Span::styled("▸", Style::default().fg(theme::YELLOW).add_modifier(Modifier::BOLD));
-                let mut new_spans: Vec<Span> = Vec::new();
                 let is_diff_add = line.spans.first().map_or(false, |s| s.content == "▎" && s.style.fg == Some(theme::GREEN));
                 let is_diff_del = line.spans.first().map_or(false, |s| s.content == "▎" && s.style.fg == Some(theme::RED));
-                // On diff lines the first span is the ▎ bar — place arrow after it
-                if is_diff_add || is_diff_del {
-                    new_spans.push(line.spans[0].clone());
-                    new_spans.push(arrow);
-                    new_spans.extend(line.spans[1..].iter().cloned());
-                } else {
-                    new_spans.push(arrow);
-                    new_spans.extend(line.spans.iter().cloned());
-                }
                 let bg = if is_selected {
                     theme::VISUAL_SELECT_CURSOR
                 } else if is_diff_add {
@@ -140,10 +129,39 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
                 } else {
                     theme::SELECTION_BG
                 };
-                Line::from(new_spans).patch_style(Style::default().bg(bg))
+                let arrow = Span::styled("▸", Style::default().fg(theme::YELLOW).add_modifier(Modifier::BOLD).bg(bg));
+                let mut new_spans: Vec<Span> = Vec::new();
+                // On diff lines the first span is the ▎ bar — place arrow after it
+                if is_diff_add || is_diff_del {
+                    new_spans.push(Span::styled(
+                        line.spans[0].content.clone(),
+                        line.spans[0].style.patch(Style::default().bg(bg)),
+                    ));
+                    new_spans.push(arrow);
+                    for span in line.spans[1..].iter() {
+                        new_spans.push(Span::styled(
+                            span.content.clone(),
+                            span.style.patch(Style::default().bg(bg)),
+                        ));
+                    }
+                } else {
+                    new_spans.push(arrow);
+                    for span in line.spans.iter() {
+                        new_spans.push(Span::styled(
+                            span.content.clone(),
+                            span.style.patch(Style::default().bg(bg)),
+                        ));
+                    }
+                }
+                Line::from(new_spans)
             } else if is_selected {
-                let spans = line.spans.iter().cloned().collect::<Vec<_>>();
-                Line::from(spans).patch_style(Style::default().bg(theme::VISUAL_SELECT_RANGE))
+                let spans: Vec<Span> = line.spans.iter().map(|span| {
+                    Span::styled(
+                        span.content.clone(),
+                        span.style.patch(Style::default().bg(theme::VISUAL_SELECT_RANGE)),
+                    )
+                }).collect();
+                Line::from(spans)
             } else {
                 line.clone()
             }

@@ -6,14 +6,17 @@ use ratatui::{
     widgets::{Block, Borders, Clear, Paragraph},
 };
 
-use crate::app::state::App;
+use crate::app::state::{App, HelpTab};
 use crate::config::types::{CONFIG_ENTRIES, KEYBINDING_ENTRIES};
 use crate::ui::theme;
+
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+const REPO_URL: &str = env!("CARGO_PKG_REPOSITORY");
 
 const FIXED_KEYS: &[(&str, &str)] = &[
     ("g/G", "Jump to top/bottom"),
     ("n/N", "Next/previous hunk"),
-    ("Tab", "Switch focus"),
+    ("Tab", "Switch focus / tab"),
     ("PgDn/PgUp", "Half-page scroll"),
     ("Ctrl+Enter", "Confirm commit"),
     ("Esc", "Cancel/close"),
@@ -30,22 +33,44 @@ pub fn draw(f: &mut Frame, app: &mut App) {
 
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(" Settings (Enter to edit, Esc to close) ")
         .style(Style::default().bg(theme::DIALOG_BG));
     f.render_widget(block, area);
 
     let inner = area.inner(Margin::new(1, 1));
-    let viewport_height = inner.height as usize;
 
+    // ── Tab bar ──
+    let tab_bar = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(1), Constraint::Min(0)])
+        .split(inner);
+
+    let tab_line = make_tab_bar(&app.help_tab);
+    f.render_widget(Paragraph::new(tab_line), tab_bar[0]);
+
+    let content_area = tab_bar[1];
+    let viewport_height = content_area.height as usize;
+
+    match app.help_tab {
+        HelpTab::Settings => draw_settings(f, app, content_area, viewport_height),
+        HelpTab::About => draw_about(f, content_area),
+    }
+
+    // Edit popup overlay (Settings tab only)
+    if app.help_tab == HelpTab::Settings {
+        if let Some(edit_idx) = app.help_editing {
+            draw_edit_popup(f, app, edit_idx);
+        }
+    }
+}
+
+fn draw_settings(f: &mut Frame, app: &mut App, area: Rect, viewport_height: usize) {
     let mut lines: Vec<Line> = Vec::new();
 
-    // ── Keybindings ──
     for (i, (_field, desc)) in KEYBINDING_ENTRIES.iter().enumerate() {
         let binding = app.config.keybindings.get_binding(i).unwrap_or("?");
         lines.push(entry_line(i, app.help_cursor, *desc, binding, theme::CYAN));
     }
 
-    // ── Configuration ──
     lines.push(separator(" Configuration "));
     for (i, (_field, desc)) in CONFIG_ENTRIES.iter().enumerate() {
         let row_idx = CFG_OFFSET + i;
@@ -53,14 +78,12 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         lines.push(entry_line(row_idx, app.help_cursor, *desc, &value, theme::GREEN));
     }
 
-    // ── Fixed keys ──
     lines.push(separator(" Fixed keys "));
     for (offset, (key, desc)) in FIXED_KEYS.iter().enumerate() {
         let row_idx = FIXED_OFFSET + offset;
         lines.push(entry_line(row_idx, app.help_cursor, *desc, key, theme::MAGENTA));
     }
 
-    // Clamp scroll
     let total_lines = lines.len();
     let max_scroll = total_lines.saturating_sub(viewport_height);
     if app.help_cursor < app.help_scroll {
@@ -87,14 +110,101 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         })
         .collect();
 
-    let widget = Paragraph::new(visible);
-    f.render_widget(widget, inner);
-
-    // ── Edit popup overlay ──
-    if let Some(edit_idx) = app.help_editing {
-        draw_edit_popup(f, app, edit_idx);
-    }
+    f.render_widget(Paragraph::new(visible), area);
 }
+
+fn draw_about(f: &mut Frame, area: Rect) {
+    let lines = vec![
+        Line::from(""),
+        logo_line1(),
+        logo_line2(),
+        logo_line3(),
+        logo_line4(),
+        logo_line5(),
+        logo_line6(),
+        Line::from(""),
+        Line::from(Span::styled(
+            format!("  Peek v{}", VERSION),
+            Style::default().fg(theme::TEXT_PRIMARY).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+        Line::from(Span::styled(
+            "  A terminal diff viewer with syntax highlighting",
+            Style::default().fg(theme::TEXT_SECONDARY),
+        )),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("  ", Style::default()),
+            Span::styled(REPO_URL, Style::default().fg(theme::BLUE).add_modifier(Modifier::UNDERLINED)),
+        ]),
+    ];
+
+    f.render_widget(Paragraph::new(lines), area);
+}
+
+// ── Logo lines ──
+
+fn logo_line1() -> Line<'static> {
+    Line::from(Span::styled("   ╭━━━━━━╮", Style::default().fg(theme::CYAN)))
+}
+
+fn logo_line2() -> Line<'static> {
+    Line::from(Span::styled("   ┃ ╭━━╮ ┃", Style::default().fg(theme::CYAN)))
+}
+
+fn logo_line3() -> Line<'static> {
+    Line::from(vec![
+        Span::styled("   ┃ ╰━━╯ ┃ ", Style::default().fg(theme::CYAN)),
+        Span::styled("P", Style::default().fg(theme::CYAN).add_modifier(Modifier::BOLD)),
+        Span::styled(" ", Style::default()),
+        Span::styled("E", Style::default().fg(theme::YELLOW).add_modifier(Modifier::BOLD)),
+        Span::styled(" ", Style::default()),
+        Span::styled("E", Style::default().fg(theme::YELLOW).add_modifier(Modifier::BOLD)),
+        Span::styled(" ", Style::default()),
+        Span::styled("K", Style::default().fg(theme::YELLOW).add_modifier(Modifier::BOLD)),
+    ])
+}
+
+fn logo_line4() -> Line<'static> {
+    Line::from(Span::styled("   ┃ ╭━━━━╯", Style::default().fg(theme::CYAN)))
+}
+
+fn logo_line5() -> Line<'static> {
+    Line::from(vec![
+        Span::styled("   ┃ ┃       ", Style::default().fg(theme::CYAN)),
+        Span::styled("+", Style::default().fg(theme::GREEN).add_modifier(Modifier::BOLD)),
+        Span::styled(" diff ", Style::default().fg(theme::TEXT_PRIMARY)),
+        Span::styled("-", Style::default().fg(theme::RED).add_modifier(Modifier::BOLD)),
+    ])
+}
+
+fn logo_line6() -> Line<'static> {
+    Line::from(Span::styled("   ╰━╯", Style::default().fg(theme::CYAN)))
+}
+
+// ── Tab bar ──
+
+fn make_tab_bar(active: &HelpTab) -> Line<'static> {
+    let (s_style, a_style) = match active {
+        HelpTab::Settings => (
+            Style::default().fg(theme::CYAN).add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
+            Style::default().fg(theme::TEXT_SECONDARY),
+        ),
+        HelpTab::About => (
+            Style::default().fg(theme::TEXT_SECONDARY),
+            Style::default().fg(theme::CYAN).add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
+        ),
+    };
+
+    Line::from(vec![
+        Span::styled(" ", Style::default()),
+        Span::styled(" Settings ", s_style),
+        Span::styled("  ", Style::default()),
+        Span::styled(" About ", a_style),
+    ])
+}
+
+// ── Edit popup ──
 
 fn draw_edit_popup(f: &mut Frame, app: &App, edit_idx: usize) {
     let (field_name, description, is_keybinding) = resolve_edit_field(edit_idx);
@@ -112,20 +222,17 @@ fn draw_edit_popup(f: &mut Frame, app: &App, edit_idx: usize) {
 
     let mut lines = Vec::new();
 
-    // Field description
     lines.push(Line::from(Span::styled(
         description.to_string(),
         Style::default().fg(theme::TEXT_PRIMARY),
     )));
     lines.push(Line::from(""));
 
-    // Current value label
     lines.push(Line::from(Span::styled(
         "Current value:",
         Style::default().fg(theme::TEXT_SECONDARY),
     )));
 
-    // Current value
     let current = app.help_input_buffer.clone();
     lines.push(Line::from(Span::styled(
         format!("  {}", current),
@@ -133,7 +240,6 @@ fn draw_edit_popup(f: &mut Frame, app: &App, edit_idx: usize) {
     )));
     lines.push(Line::from(""));
 
-    // Hints
     if is_keybinding {
         lines.push(Line::from(Span::styled(
             "Press any key to set new binding",
@@ -150,7 +256,6 @@ fn draw_edit_popup(f: &mut Frame, app: &App, edit_idx: usize) {
         Style::default().fg(theme::TEXT_SECONDARY),
     )));
 
-    // Value hints for config entries
     if !is_keybinding {
         let cfg_idx = edit_idx - CFG_OFFSET;
         let hint = match cfg_idx {
@@ -166,13 +271,11 @@ fn draw_edit_popup(f: &mut Frame, app: &App, edit_idx: usize) {
         )));
     }
 
-    let widget = Paragraph::new(lines);
-    f.render_widget(widget, inner);
+    f.render_widget(Paragraph::new(lines), inner);
 
-    // Place terminal cursor at end of input value (line 3 = "  {value}")
     let buffer_len = app.help_input_buffer.len() as u16;
     let cursor_x = inner.x + 2 + buffer_len;
-    let cursor_y = inner.y + 3; // line index 3 = the value line
+    let cursor_y = inner.y + 3;
     f.set_cursor_position((cursor_x, cursor_y));
 }
 

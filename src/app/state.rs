@@ -17,6 +17,12 @@ pub enum AppMode {
     Help,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum HelpTab {
+    Settings,
+    About,
+}
+
 #[derive(Debug, Clone)]
 pub struct FileTreeState {
     pub selected: usize,
@@ -103,6 +109,7 @@ pub struct App {
     pub help_scroll: usize,
     pub help_editing: Option<usize>,
     pub help_input_buffer: String,
+    pub help_tab: HelpTab,
 }
 
 impl App {
@@ -120,6 +127,7 @@ impl App {
             help_scroll: 0,
             help_editing: None,
             help_input_buffer: String::new(),
+            help_tab: HelpTab::Settings,
         }
     }
 

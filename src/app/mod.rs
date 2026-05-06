@@ -3,7 +3,7 @@ pub mod state;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use message::{Command, Message};
-use state::{App, AppMode};
+use state::{App, AppMode, HelpTab};
 
 use crate::diff::types::DiffMode;
 
@@ -538,6 +538,16 @@ fn handle_help_key(app: &mut App, key: KeyEvent) -> Command {
             app.mode = AppMode::DiffViewFocus;
             app.help_editing = None;
             app.help_input_buffer.clear();
+            Command::None
+        }
+        KeyCode::Tab => {
+            app.help_tab = match app.help_tab {
+                HelpTab::Settings => HelpTab::About,
+                HelpTab::About => HelpTab::Settings,
+            };
+            app.help_cursor = 0;
+            app.help_scroll = 0;
+            app.help_editing = None;
             Command::None
         }
         KeyCode::Char('j') | KeyCode::Down => {
