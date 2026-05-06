@@ -154,9 +154,7 @@ fn logo_line2() -> Line<'static> {
 
 fn logo_line3() -> Line<'static> {
     Line::from(vec![
-        Span::styled("   ┃ ╰━━╯ ┃ ", Style::default().fg(theme::CYAN)),
-        Span::styled("P", Style::default().fg(theme::CYAN).add_modifier(Modifier::BOLD)),
-        Span::styled(" ", Style::default()),
+        Span::styled("   ┃ ╰━━╯ ┃  ", Style::default().fg(theme::CYAN)),
         Span::styled("E", Style::default().fg(theme::YELLOW).add_modifier(Modifier::BOLD)),
         Span::styled(" ", Style::default()),
         Span::styled("E", Style::default().fg(theme::YELLOW).add_modifier(Modifier::BOLD)),
