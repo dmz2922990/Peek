@@ -45,12 +45,6 @@ npm install -g @dmz2922990/peek
 
 Supports macOS (Apple Silicon & Intel), Linux, and Windows.
 
-### Shell Installer
-
-```bash
-curl --proto '=https' --tlsv1.2 -LsSf https://github.com/dmz2922990/Peek/releases/latest/download/peek-installer.sh | sh
-```
-
 ### From Source
 
 ```bash
