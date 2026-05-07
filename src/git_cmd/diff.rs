@@ -72,6 +72,19 @@ pub fn current_branch() -> Result<String> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
+pub fn repo_root() -> Result<std::path::PathBuf> {
+    let output = Command::new("git")
+        .args(["rev-parse", "--show-toplevel"])
+        .output()?;
+
+    if !output.status.success() {
+        return Err(anyhow!("failed to get repo root"));
+    }
+
+    let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    Ok(std::path::PathBuf::from(path))
+}
+
 pub fn has_uncommitted_changes() -> Result<bool> {
     let output = Command::new("git")
         .args(["diff", "--quiet", "HEAD"])

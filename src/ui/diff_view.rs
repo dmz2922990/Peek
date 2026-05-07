@@ -318,7 +318,7 @@ fn build_lines(app: &App) -> (Vec<Line<'static>>, Vec<Option<(usize, Option<usiz
     )));
     line_map.push(None);
 
-    let source_lines = load_source_lines(&file.new_path);
+    let source_lines = load_source_lines(&file.new_path, app.repo_root.as_deref());
     let mut highlighter = SyntaxHighlighter::new(&file.new_path);
     let expanded_folds = &app.diff_view.expanded_folds;
 
@@ -440,8 +440,12 @@ fn build_lines(app: &App) -> (Vec<Line<'static>>, Vec<Option<(usize, Option<usiz
     (lines, line_map, fold_positions)
 }
 
-fn load_source_lines(path: &Path) -> Vec<String> {
-    fs::read_to_string(path)
+fn load_source_lines(path: &Path, repo_root: Option<&Path>) -> Vec<String> {
+    let resolved = match repo_root {
+        Some(root) => root.join(path),
+        None => path.to_path_buf(),
+    };
+    fs::read_to_string(resolved)
         .map(|content| content.lines().map(String::from).collect())
         .unwrap_or_default()
 }

@@ -51,6 +51,7 @@ async fn main() -> Result<()> {
     // Load initial diff
     let branch = git_diff::current_branch().ok();
     app.current_branch = branch.clone();
+    app.repo_root = git_diff::repo_root().ok();
 
     // Channel for async results
     let (tx, mut rx) = mpsc::channel::<Message>(100);
