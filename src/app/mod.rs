@@ -183,8 +183,12 @@ fn handle_diff_view_key(app: &mut App, key: KeyEvent) -> Command {
         .map(|(_, k)| *k);
 
     // Hunk-based fold keys (used for collapse when no visible fold indicators)
-    let current_hunk = app.diff_view.rendered_line_map[..=cursor].iter().rev()
-        .find_map(|e| e.as_ref().map(|(h, _)| *h));
+    let current_hunk = if cursor < app.diff_view.rendered_line_map.len() {
+        app.diff_view.rendered_line_map[..=cursor].iter().rev()
+            .find_map(|e| e.as_ref().map(|(h, _)| *h))
+    } else {
+        None
+    };
     let hunk_above_key = current_hunk.map(|h| h * 2 + 1); // up_key for gap before current hunk
     let hunk_below_key = current_hunk.map(|h| {
         // Find actual fold key after this hunk from fold_positions, or compute

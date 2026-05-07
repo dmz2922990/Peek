@@ -1,6 +1,6 @@
 [package]
 name = "peek"
-version = "0.3.9"
+version = "0.3.10"
 edition = "2024"
 repository = "https://github.com/dmz2922990/Peek"
 
