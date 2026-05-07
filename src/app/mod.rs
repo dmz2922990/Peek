@@ -171,34 +171,56 @@ fn handle_diff_view_key(app: &mut App, key: KeyEvent) -> Command {
         return Command::None;
     }
 
-    // Context expand/collapse (incremental)
-    if is_key(&key, &kb.context_expand) {
-        if let Some(Some((hunk_idx, _))) = app.diff_view.rendered_line_map.get(app.diff_view.cursor) {
-            let key = *hunk_idx * 2;
-            let entry = app.diff_view.expanded_folds.entry(key).or_insert(0);
-            *entry = entry.saturating_add(app.config.diff.default_context_lines);
+    // Context expand/collapse
+    let cursor = app.diff_view.cursor;
+    let folds = &app.diff_view.fold_positions;
+    // Visible fold indicators near cursor
+    let fold_above_key = folds.iter().rev()
+        .find(|(pos, _)| *pos <= cursor)
+        .map(|(_, k)| *k);
+    let fold_below_key = folds.iter()
+        .find(|(pos, _)| *pos > cursor)
+        .map(|(_, k)| *k);
+
+    // Hunk-based fold keys (used for collapse when no visible fold indicators)
+    let current_hunk = app.diff_view.rendered_line_map[..=cursor].iter().rev()
+        .find_map(|e| e.as_ref().map(|(h, _)| *h));
+    let hunk_above_key = current_hunk.map(|h| h * 2 + 1); // up_key for gap before current hunk
+    let hunk_below_key = current_hunk.map(|h| {
+        // Find actual fold key after this hunk from fold_positions, or compute
+        let computed = (h + 1) * 2;
+        if folds.iter().any(|(_, k)| *k == computed || *k == computed + 1) {
+            computed
+        } else if folds.iter().any(|(_, k)| *k == usize::MAX) {
+            usize::MAX
+        } else {
+            computed
         }
+    });
+
+    let ctx = app.config.diff.default_context_lines;
+
+    // Context expand (only visible folds)
+    if is_key(&key, &kb.context_expand) {
+        if let Some(k) = fold_above_key { *app.diff_view.expanded_folds.entry(k).or_insert(0) += ctx; }
+        if let Some(k) = fold_below_key { *app.diff_view.expanded_folds.entry(k).or_insert(0) += ctx; }
         return Command::None;
     }
+    // Context collapse (always hunk-based — works even when fully expanded)
     if is_key(&key, &kb.context_collapse) {
-        if let Some(Some((hunk_idx, _))) = app.diff_view.rendered_line_map.get(app.diff_view.cursor) {
-            let key = *hunk_idx * 2;
-            if let Some(count) = app.diff_view.expanded_folds.get_mut(&key) {
-                *count = count.saturating_sub(app.config.diff.default_context_lines);
-                if *count == 0 {
-                    app.diff_view.expanded_folds.remove(&key);
-                }
+        let keys: Vec<usize> = hunk_above_key.into_iter().chain(hunk_below_key.into_iter()).collect();
+        for k in keys {
+            if let Some(count) = app.diff_view.expanded_folds.get_mut(&k) {
+                *count = count.saturating_sub(ctx);
+                if *count == 0 { app.diff_view.expanded_folds.remove(&k); }
             }
         }
         return Command::None;
     }
-
-    // Context expand/collapse (full — Shift+= / Shift+-)
+    // Context expand all (only visible folds)
     if is_key(&key, &kb.context_expand_all) {
-        if let Some(Some((hunk_idx, _))) = app.diff_view.rendered_line_map.get(app.diff_view.cursor) {
-            app.diff_view.expanded_folds.insert(*hunk_idx * 2, 1000);
-            app.diff_view.expanded_folds.insert(*hunk_idx * 2 + 1, 1000);
-        }
+        if let Some(k) = fold_above_key { app.diff_view.expanded_folds.insert(k, 1000); }
+        if let Some(k) = fold_below_key { app.diff_view.expanded_folds.insert(k, 1000); }
         return Command::None;
     }
     if is_key(&key, &kb.context_collapse_all) {

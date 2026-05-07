@@ -347,7 +347,7 @@ fn build_lines(app: &App) -> (Vec<Line<'static>>, Vec<Option<(usize, Option<usiz
                 }
             } else {
                 let hidden = gap - total_shown;
-                let use_dual = gap > app.config.diff.default_context_lines;
+                let use_dual = gap > app.config.diff.default_context_lines && hunk_idx > 0;
 
                 for i in 0..down_count {
                     let line_no = prev_hunk_end + i;
@@ -371,7 +371,9 @@ fn build_lines(app: &App) -> (Vec<Line<'static>>, Vec<Option<(usize, Option<usiz
                     let fold_idx = lines.len();
                     lines.push(make_fold_line(hidden));
                     line_map.push(None);
-                    fold_positions.push((fold_idx, down_key));
+                    // First hunk: use up_key so expanding shows lines near the hunk, not file start
+                    let fold_key = if hunk_idx == 0 { up_key } else { down_key };
+                    fold_positions.push((fold_idx, fold_key));
                 }
 
                 for i in 0..up_count {
