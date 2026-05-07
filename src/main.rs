@@ -57,9 +57,11 @@ async fn main() -> Result<()> {
     let (tx, mut rx) = mpsc::channel::<Message>(100);
 
     // Start filesystem watcher for auto-reload
+    let watch_path = app.repo_root.clone()
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
     let _watcher_guard = peek::watcher::start_watcher(
         tx.clone(),
-        std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
+        watch_path,
     ).ok();
 
     // Spawn initial diff load

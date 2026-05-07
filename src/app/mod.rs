@@ -251,6 +251,12 @@ fn handle_diff_view_key(app: &mut App, key: KeyEvent) -> Command {
         return cmd;
     }
 
+    // Manual refresh
+    if matches!(key.code, KeyCode::Char('r')) {
+        app.diff_view.cache_key = None;
+        return Command::LoadDiff(app.diff_view.mode.clone());
+    }
+
     // Commit
     if is_key(&key, &kb.commit) {
         app.mode = AppMode::GitCommit;
