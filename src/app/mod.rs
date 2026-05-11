@@ -19,6 +19,9 @@ pub fn update(app: &mut App, msg: Message) -> Command {
             app.diff_view.status_message = None;
             app.diff_view.cache_key = None;
             app.diff_view.hscroll = 0;
+            app.review.cache.clear();
+            app.review.visible = false;
+            app.review.comments.clear();
             Command::None
         }
         Message::DiffError(e) => {
@@ -55,15 +58,45 @@ pub fn update(app: &mut App, msg: Message) -> Command {
             if matches!(app.mode, AppMode::GitCommit | AppMode::GitPush | AppMode::Help) {
                 Command::None
             } else {
+                app.review.cache.clear();
+                app.review.visible = false;
+                app.review.comments.clear();
                 Command::LoadDiff(app.diff_view.mode.clone())
             }
         }
         Message::Tick => Command::None,
         Message::Mouse(_) => Command::None,
+        Message::ReviewResult { path, comments } => {
+            app.review.reviewing = false;
+            app.review.status_message = None;
+            app.review.cache.insert(path, comments.clone());
+            app.review.comments = comments;
+            app.review.selected = 0;
+            app.review.scroll = 0;
+            app.review.expanded = None;
+            app.review.visible = true;
+            app.mode = AppMode::ReviewFocus;
+            Command::None
+        }
+        Message::ReviewError(e) => {
+            app.review.reviewing = false;
+            app.review.status_message = Some(format!("Error: {}", e));
+            app.review.visible = true;
+            Command::None
+        }
     }
 }
 
 fn handle_key(app: &mut App, key: KeyEvent) -> Command {
+    // Global keys: H toggles Help from any mode (except Help itself)
+    if matches!(key.code, KeyCode::Char('H')) && app.mode != AppMode::Help {
+        app.mode = AppMode::Help;
+        app.help_cursor = 0;
+        app.help_scroll = 0;
+        app.help_editing = None;
+        return Command::None;
+    }
+
     match app.mode {
         AppMode::Normal | AppMode::DiffViewFocus => handle_diff_view_key(app, key),
         AppMode::FileTreeFocus => handle_file_tree_key(app, key),
@@ -72,6 +105,7 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Command {
         AppMode::FindBar => handle_find_key(app, key),
         AppMode::VisualSelect => handle_visual_select_key(app, key),
         AppMode::Help => handle_help_key(app, key),
+        AppMode::ReviewFocus => handle_review_key(app, key),
     }
 }
 
@@ -90,9 +124,13 @@ fn handle_diff_view_key(app: &mut App, key: KeyEvent) -> Command {
         return Command::None;
     }
 
-    // Tab to switch to file tree
-    if matches!(key.code, KeyCode::Tab) && app.file_tree.visible {
-        app.mode = AppMode::FileTreeFocus;
+    // Tab to cycle focus: DiffView → FileTree → Review → DiffView
+    if matches!(key.code, KeyCode::Tab) {
+        if app.file_tree.visible {
+            app.mode = AppMode::FileTreeFocus;
+        } else if app.review.visible || app.review.reviewing {
+            app.mode = AppMode::ReviewFocus;
+        }
         return Command::None;
     }
 
@@ -185,7 +223,7 @@ fn handle_diff_view_key(app: &mut App, key: KeyEvent) -> Command {
     // Hunk-based fold keys (used for collapse when no visible fold indicators)
     let current_hunk = if cursor < app.diff_view.rendered_line_map.len() {
         app.diff_view.rendered_line_map[..=cursor].iter().rev()
-            .find_map(|e| e.as_ref().map(|(h, _)| *h))
+            .find_map(|e| e.as_ref().map(|(h, _, _)| *h))
     } else {
         None
     };
@@ -261,6 +299,11 @@ fn handle_diff_view_key(app: &mut App, key: KeyEvent) -> Command {
         return Command::LoadDiff(app.diff_view.mode.clone());
     }
 
+    // AI Review
+    if matches!(key.code, KeyCode::Char('R')) {
+        return start_review(app);
+    }
+
     // Commit
     if is_key(&key, &kb.commit) {
         app.mode = AppMode::GitCommit;
@@ -301,15 +344,6 @@ fn handle_diff_view_key(app: &mut App, key: KeyEvent) -> Command {
         return Command::None;
     }
 
-    // Help
-    if matches!(key.code, KeyCode::Char('H')) {
-        app.mode = AppMode::Help;
-        app.help_cursor = 0;
-        app.help_scroll = 0;
-        app.help_editing = None;
-        return Command::None;
-    }
-
     // Visual select
     if is_key(&key, &kb.visual_select) {
         app.mode = AppMode::VisualSelect;
@@ -335,6 +369,10 @@ fn handle_file_tree_key(app: &mut App, key: KeyEvent) -> Command {
         return Command::None;
     }
 
+    if matches!(key.code, KeyCode::Char('R')) {
+        return start_review(app);
+    }
+
     match key.code {
         KeyCode::Down | KeyCode::Char('j') => {
             if app.file_tree.selected + 1 < app.diff_data.len() {
@@ -352,10 +390,28 @@ fn handle_file_tree_key(app: &mut App, key: KeyEvent) -> Command {
             app.diff_view.scroll = 0;
             app.diff_view.cursor = 0;
             app.diff_view.expanded_folds.clear();
+            // Load cached review for new file
+            let path = app.current_file().map(|f| f.new_path.clone());
+            if let Some(ref p) = path {
+                if let Some(cached) = app.review.cache.get(p).cloned() {
+                    app.review.comments = cached;
+                    app.review.visible = true;
+                } else {
+                    app.review.comments.clear();
+                    app.review.visible = false;
+                }
+                app.review.selected = 0;
+                app.review.scroll = 0;
+                app.review.expanded = None;
+            }
             Command::None
         }
         KeyCode::Tab => {
-            app.mode = AppMode::DiffViewFocus;
+            if app.review.visible || app.review.reviewing {
+                app.mode = AppMode::ReviewFocus;
+            } else {
+                app.mode = AppMode::DiffViewFocus;
+            }
             Command::None
         }
         KeyCode::Char('y') => {
@@ -473,13 +529,13 @@ fn cursor_line_number(app: &App) -> usize {
     };
 
     // Try exact cursor position
-    if let Some(Some((hunk_idx, Some(line_idx)))) = map.get(cursor) {
+    if let Some(Some((hunk_idx, Some(line_idx), _))) = map.get(cursor) {
         return line_number_from_idx(&file.hunks[*hunk_idx], *line_idx);
     }
 
     // Search backward for nearest diff line
     for i in (0..cursor).rev() {
-        if let Some(Some((hunk_idx, Some(line_idx)))) = map.get(i) {
+        if let Some(Some((hunk_idx, Some(line_idx), _))) = map.get(i) {
             return line_number_from_idx(&file.hunks[*hunk_idx], *line_idx);
         }
     }
@@ -532,53 +588,225 @@ fn handle_visual_select_key(app: &mut App, key: KeyEvent) -> Command {
     Command::None
 }
 
-fn handle_help_key(app: &mut App, key: KeyEvent) -> Command {
-    use crate::config::types::{CONFIG_ENTRIES, KEYBINDING_ENTRIES};
+fn start_review(app: &mut App) -> Command {
+    if app.review.reviewing {
+        return Command::None;
+    }
+    if app.config.review.effective_api_key().is_empty() {
+        app.review.status_message = Some("API key not configured".into());
+        app.review.visible = true;
+        return Command::None;
+    }
+    app.review.status_message = None;
+    app.review.reviewing = true;
+    let file_idx = app.file_tree.selected;
+    let file = match app.diff_data.get(file_idx) {
+        Some(f) => f.clone(),
+        None => return Command::None,
+    };
+    Command::StartReview {
+        file,
+        repo_root: app.repo_root.clone(),
+        config: app.config.review.clone(),
+    }
+}
 
+fn handle_review_key(app: &mut App, key: KeyEvent) -> Command {
+    let max = app.review.comments.len().saturating_sub(1);
+    crate::review::log(&format!("review_key: {:?} selected={} max={}", key.code, app.review.selected, max));
+
+    match key.code {
+        KeyCode::Char('j') | KeyCode::Char('J') | KeyCode::Down => {
+            if app.review.selected < max {
+                app.review.selected += 1;
+                let viewport = 5; // approximate
+                if app.review.selected >= app.review.scroll + viewport {
+                    app.review.scroll = app.review.selected + 1 - viewport;
+                }
+            }
+            Command::None
+        }
+        KeyCode::Char('k') | KeyCode::Char('K') | KeyCode::Up => {
+            if app.review.selected > 0 {
+                app.review.selected -= 1;
+                if app.review.selected < app.review.scroll {
+                    app.review.scroll = app.review.selected;
+                }
+            }
+            Command::None
+        }
+        KeyCode::Enter => {
+            if let Some(comment) = app.review.comments.get(app.review.selected) {
+                if app.review.expanded == Some(app.review.selected) {
+                    app.review.expanded = None;
+                } else {
+                    app.review.expanded = Some(app.review.selected);
+                }
+                let line_no = comment.line_no;
+                if line_no > 0 {
+                    let found = app.diff_view.rendered_line_map.iter().enumerate()
+                        .find_map(|(i, entry)| {
+                            entry.as_ref().and_then(|(_, _, nl)| {
+                                if *nl == Some(line_no) { Some(i) } else { None }
+                            })
+                        });
+                    if let Some(pos) = found {
+                        app.diff_view.cursor = pos;
+                    }
+                }
+            }
+            app.mode = AppMode::DiffViewFocus;
+            Command::None
+        }
+        KeyCode::Char('q') | KeyCode::Esc => {
+            app.review.visible = false;
+            app.mode = AppMode::DiffViewFocus;
+            Command::None
+        }
+        KeyCode::Tab => {
+            app.mode = AppMode::DiffViewFocus;
+            Command::None
+        }
+        _ => Command::None,
+    }
+}
+
+fn handle_help_key(app: &mut App, key: KeyEvent) -> Command {
+    use crate::config::types::{CONFIG_ENTRIES, KEYBINDING_ENTRIES, REVIEW_CONFIG_ENTRIES};
+
+    // Settings tab offsets
     let kb_count = KEYBINDING_ENTRIES.len();
     let cfg_offset = kb_count + 1;
     let cfg_count = CONFIG_ENTRIES.len();
     let fixed_offset = cfg_offset + cfg_count + 1;
-    let fixed_count = 6;
-    let total_entries = fixed_offset + fixed_count;
+    let fixed_count = 7;
+
+    // AI tab
+    let ai_count = REVIEW_CONFIG_ENTRIES.len();
+
+    let total_entries = match app.help_tab {
+        HelpTab::Settings => fixed_offset + fixed_count,
+        HelpTab::About => 0,
+        HelpTab::Ai => ai_count,
+    };
 
     // ── Editing mode ──
     if let Some(edit_idx) = app.help_editing {
         if matches!(key.code, KeyCode::Esc) {
             app.help_editing = None;
             app.help_input_buffer.clear();
+            app.help_input_cursor = 0;
             return Command::None;
         }
 
-        if edit_idx < kb_count {
-            // Keybinding: capture single key press
-            let binding_str = key_event_to_binding(&key);
-            if !binding_str.is_empty() {
-                app.help_input_buffer = binding_str.clone();
-                app.config.keybindings.set_binding(edit_idx, binding_str);
-                crate::config::save(&app.config);
-                app.help_editing = None;
-                app.help_input_buffer.clear();
-            }
-        } else if edit_idx >= cfg_offset && edit_idx < cfg_offset + cfg_count {
-            // Config value: text input
-            let cfg_idx = edit_idx - cfg_offset;
-            match key.code {
-                KeyCode::Enter => {
-                    if app.config.diff.set_entry(cfg_idx, app.help_input_buffer.clone()) {
+        match app.help_tab {
+            HelpTab::Settings => {
+                if edit_idx < kb_count {
+                    let binding_str = key_event_to_binding(&key);
+                    if !binding_str.is_empty() {
+                        app.help_input_buffer = binding_str.clone();
+                        app.config.keybindings.set_binding(edit_idx, binding_str);
                         crate::config::save(&app.config);
+                        app.help_editing = None;
+                        app.help_input_buffer.clear();
                     }
-                    app.help_editing = None;
-                    app.help_input_buffer.clear();
+                } else if edit_idx >= cfg_offset && edit_idx < cfg_offset + cfg_count {
+                    let cfg_idx = edit_idx - cfg_offset;
+                    match key.code {
+                        KeyCode::Tab => {
+                            if app.config.diff.set_entry(cfg_idx, app.help_input_buffer.clone()) {
+                                crate::config::save(&app.config);
+                            }
+                            app.help_editing = None;
+                            app.help_input_buffer.clear();
+                            app.help_input_cursor = 0;
+                        }
+                        KeyCode::Backspace => {
+                            if app.help_input_cursor > 0 {
+                                let pos = app.help_input_cursor - 1;
+                                if let Some((bp, ch)) = app.help_input_buffer.char_indices().nth(pos) {
+                                    app.help_input_buffer.drain(bp..bp + ch.len_utf8());
+                                }
+                                app.help_input_cursor = pos;
+                            }
+                        }
+                        KeyCode::Delete => {
+                            if let Some((bp, ch)) = app.help_input_buffer.char_indices().nth(app.help_input_cursor) {
+                                app.help_input_buffer.drain(bp..bp + ch.len_utf8());
+                            }
+                        }
+                        KeyCode::Left => { app.help_input_cursor = app.help_input_cursor.saturating_sub(1); }
+                        KeyCode::Right => {
+                            let len = app.help_input_buffer.chars().count();
+                            if app.help_input_cursor < len { app.help_input_cursor += 1; }
+                        }
+                        KeyCode::Home => { app.help_input_cursor = 0; }
+                        KeyCode::End => { app.help_input_cursor = app.help_input_buffer.chars().count(); }
+                        KeyCode::Char(c) => {
+                            let bp = app.help_input_buffer.char_indices()
+                                .nth(app.help_input_cursor)
+                                .map_or(app.help_input_buffer.len(), |(i, _)| i);
+                            app.help_input_buffer.insert(bp, c);
+                            app.help_input_cursor += 1;
+                        }
+                        _ => {}
+                    }
                 }
-                KeyCode::Backspace => {
-                    app.help_input_buffer.pop();
-                }
-                KeyCode::Char(c) => {
-                    app.help_input_buffer.push(c);
-                }
-                _ => {}
             }
+            HelpTab::Ai => {
+                if edit_idx < ai_count {
+                    let is_prompt = edit_idx + 1 == ai_count;
+                    match key.code {
+                        KeyCode::Enter => {
+                            if is_prompt {
+                                let bp = app.help_input_buffer.char_indices()
+                                    .nth(app.help_input_cursor)
+                                    .map_or(app.help_input_buffer.len(), |(i, _)| i);
+                                app.help_input_buffer.insert(bp, '\n');
+                                app.help_input_cursor += 1;
+                            }
+                        }
+                        KeyCode::Tab => {
+                            if app.config.review.set_entry(edit_idx, app.help_input_buffer.clone()) {
+                                crate::config::save(&app.config);
+                            }
+                            app.help_editing = None;
+                            app.help_input_buffer.clear();
+                            app.help_input_cursor = 0;
+                        }
+                        KeyCode::Backspace => {
+                            if app.help_input_cursor > 0 {
+                                let pos = app.help_input_cursor - 1;
+                                if let Some((bp, ch)) = app.help_input_buffer.char_indices().nth(pos) {
+                                    app.help_input_buffer.drain(bp..bp + ch.len_utf8());
+                                }
+                                app.help_input_cursor = pos;
+                            }
+                        }
+                        KeyCode::Delete => {
+                            if let Some((bp, ch)) = app.help_input_buffer.char_indices().nth(app.help_input_cursor) {
+                                app.help_input_buffer.drain(bp..bp + ch.len_utf8());
+                            }
+                        }
+                        KeyCode::Left => { app.help_input_cursor = app.help_input_cursor.saturating_sub(1); }
+                        KeyCode::Right => {
+                            let len = app.help_input_buffer.chars().count();
+                            if app.help_input_cursor < len { app.help_input_cursor += 1; }
+                        }
+                        KeyCode::Home => { app.help_input_cursor = 0; }
+                        KeyCode::End => { app.help_input_cursor = app.help_input_buffer.chars().count(); }
+                        KeyCode::Char(c) => {
+                            let bp = app.help_input_buffer.char_indices()
+                                .nth(app.help_input_cursor)
+                                .map_or(app.help_input_buffer.len(), |(i, _)| i);
+                            app.help_input_buffer.insert(bp, c);
+                            app.help_input_cursor += 1;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            HelpTab::About => {}
         }
         return Command::None;
     }
@@ -589,11 +817,13 @@ fn handle_help_key(app: &mut App, key: KeyEvent) -> Command {
             app.mode = AppMode::DiffViewFocus;
             app.help_editing = None;
             app.help_input_buffer.clear();
+            app.help_input_cursor = 0;
             Command::None
         }
         KeyCode::Tab => {
             app.help_tab = match app.help_tab {
-                HelpTab::Settings => HelpTab::About,
+                HelpTab::Settings => HelpTab::Ai,
+                HelpTab::Ai => HelpTab::About,
                 HelpTab::About => HelpTab::Settings,
             };
             app.help_cursor = 0;
@@ -615,18 +845,29 @@ fn handle_help_key(app: &mut App, key: KeyEvent) -> Command {
         }
         KeyCode::Enter => {
             let cursor = app.help_cursor;
-            if cursor < kb_count || (cursor >= cfg_offset && cursor < cfg_offset + cfg_count) {
-                // Populate input buffer with current value
-                if cursor < kb_count {
-                    app.help_input_buffer = app.config.keybindings.get_binding(cursor)
-                        .unwrap_or("").to_string();
-                    // Store original to detect changes
-                } else {
-                    let cfg_idx = cursor - cfg_offset;
-                    app.help_input_buffer = app.config.diff.get_entry(cfg_idx)
-                        .unwrap_or_default();
+            match app.help_tab {
+                HelpTab::Settings => {
+                    if cursor < kb_count {
+                        app.help_input_buffer = app.config.keybindings.get_binding(cursor)
+                            .unwrap_or("").to_string();
+                        app.help_editing = Some(cursor);
+                    } else if cursor >= cfg_offset && cursor < cfg_offset + cfg_count {
+                        let cfg_idx = cursor - cfg_offset;
+                        app.help_input_buffer = app.config.diff.get_entry(cfg_idx)
+                            .unwrap_or_default();
+                        app.help_editing = Some(cursor);
+                        app.help_input_cursor = app.help_input_buffer.chars().count();
+                    }
                 }
-                app.help_editing = Some(cursor);
+                HelpTab::Ai => {
+                    if cursor < ai_count {
+                        app.help_input_buffer = app.config.review.get_entry(cursor)
+                            .unwrap_or_default();
+                        app.help_editing = Some(cursor);
+                        app.help_input_cursor = app.help_input_buffer.chars().count();
+                    }
+                }
+                HelpTab::About => {}
             }
             Command::None
         }
@@ -670,7 +911,7 @@ fn copy_cursor_line(app: &mut App) -> Command {
     let map = &app.diff_view.rendered_line_map;
 
     // Only copy actual diff lines (Some(hunk_idx, Some(line_idx)))
-    let Some(&Some((hunk_idx, Some(line_idx)))) = map.get(cursor) else {
+    let Some(&Some((hunk_idx, Some(line_idx), _))) = map.get(cursor) else {
         app.diff_view.status_message = Some("Nothing to copy here".into());
         return Command::None;
     };
@@ -706,7 +947,7 @@ fn copy_selection_range(app: &mut App) -> Command {
     // Collect all (hunk_idx, line_idx) pairs in the selection (only actual diff lines)
     let mut entries: Vec<(usize, usize)> = Vec::new();
     for i in lo..=hi {
-        if let Some(Some((hunk_idx, Some(line_idx)))) = map.get(i) {
+        if let Some(Some((hunk_idx, Some(line_idx), _))) = map.get(i) {
             entries.push((*hunk_idx, *line_idx));
         }
     }
@@ -765,7 +1006,7 @@ fn jump_hunk(app: &mut App, direction: i32) {
 
     // Find current hunk index
     let current_hunk: Option<usize> = map.get(cursor)
-        .and_then(|opt| opt.map(|(h, _)| h));
+        .and_then(|opt| opt.map(|(h, _, _)| h));
 
     let target_hunk: usize = match (current_hunk, direction) {
         (Some(h), 1) => h + 1,
@@ -777,7 +1018,7 @@ fn jump_hunk(app: &mut App, direction: i32) {
 
     // Find the first diff line of the target hunk in the rendered map
     let target_pos = map.iter().enumerate().find(|(_, entry)| {
-        matches!(entry, Some((h, Some(0))) if *h == target_hunk)
+        matches!(entry, Some((h, Some(0), _)) if *h == target_hunk)
     }).map(|(i, _)| i);
 
     if let Some(pos) = target_pos {

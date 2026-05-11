@@ -4,6 +4,7 @@ pub mod diff;
 pub mod git_cmd;
 pub mod clipboard;
 pub mod config;
+pub mod review;
 pub mod scroll;
 pub mod syntax;
 pub mod watcher;
