@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 use ratatui::text::Line;
 
@@ -15,12 +16,56 @@ pub enum AppMode {
     FindBar,
     VisualSelect,
     Help,
+    ReviewFocus,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum HelpTab {
     Settings,
     About,
+    Ai,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ReviewSeverity {
+    Error,
+    Warning,
+    Suggestion,
+}
+
+#[derive(Debug, Clone)]
+pub struct ReviewComment {
+    pub line_no: usize,
+    pub severity: ReviewSeverity,
+    pub summary: String,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ReviewState {
+    pub comments: Vec<ReviewComment>,
+    pub cache: HashMap<PathBuf, Vec<ReviewComment>>,
+    pub selected: usize,
+    pub scroll: usize,
+    pub expanded: Option<usize>,
+    pub visible: bool,
+    pub reviewing: bool,
+    pub status_message: Option<String>,
+}
+
+impl Default for ReviewState {
+    fn default() -> Self {
+        Self {
+            comments: Vec::new(),
+            cache: HashMap::new(),
+            selected: 0,
+            scroll: 0,
+            expanded: None,
+            visible: false,
+            reviewing: false,
+            status_message: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -55,9 +100,9 @@ pub struct DiffViewState {
     pub status_message: Option<String>,
     pub total_lines: usize,
     pub viewport_height: usize,
-    /// Maps each rendered line index to (hunk_idx, Some(line_idx)) for diff lines,
-    /// (hunk_idx, None) for expanded context, or None for headers/indicators
-    pub rendered_line_map: Vec<Option<(usize, Option<usize>)>>,
+    /// Maps each rendered line index to (hunk_idx, Some(line_idx), new_line) for diff lines,
+    /// (hunk_idx, None, new_line) for expanded context, or None for headers/indicators
+    pub rendered_line_map: Vec<Option<(usize, Option<usize>, Option<usize>)>>,
     /// Per-fold expand count: hunk_idx -> lines expanded (usize::MAX for tail fold)
     pub expanded_folds: HashMap<usize, usize>,
     /// Positions of fold indicators: (rendered_line_idx, hunk_idx_after_fold)
@@ -105,6 +150,7 @@ pub struct App {
     pub diff_data: Vec<FileDiff>,
     pub file_tree: FileTreeState,
     pub diff_view: DiffViewState,
+    pub review: ReviewState,
     pub should_quit: bool,
     pub size: (u16, u16),
     pub current_branch: Option<String>,
@@ -113,6 +159,7 @@ pub struct App {
     pub help_scroll: usize,
     pub help_editing: Option<usize>,
     pub help_input_buffer: String,
+    pub help_input_cursor: usize,
     pub help_tab: HelpTab,
 }
 
@@ -124,6 +171,7 @@ impl App {
             diff_data: Vec::new(),
             file_tree: FileTreeState::default(),
             diff_view: DiffViewState::default(),
+            review: ReviewState::default(),
             should_quit: false,
             size: (80, 24),
             current_branch: None,
@@ -132,6 +180,7 @@ impl App {
             help_scroll: 0,
             help_editing: None,
             help_input_buffer: String::new(),
+            help_input_cursor: 0,
             help_tab: HelpTab::Settings,
         }
     }

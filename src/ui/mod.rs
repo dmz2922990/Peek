@@ -6,26 +6,49 @@ pub mod diff_view;
 pub mod git_dialog;
 pub mod find_bar;
 pub mod help;
+pub mod review_panel;
 
-use ratatui::{Frame, layout::{Constraint, Direction, Layout}, widgets::Clear};
+use ratatui::{Frame, layout::{Constraint, Direction, Layout, Rect}, widgets::Clear};
 
 use crate::app::state::{App, AppMode};
 
 pub fn draw(f: &mut Frame, app: &mut App) {
+    let show_review = app.review.visible || app.review.reviewing;
+
+    let review_height = if show_review {
+        let count = app.review.comments.len().max(1);
+        let min_h: u16 = 3;
+        let max_h = (f.area().height as f32 * 0.4) as u16;
+        (count as u16).max(min_h).min(max_h)
+    } else {
+        0
+    };
+
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Min(1),    // main area
-            Constraint::Length(1), // status bar
-        ])
+        .constraints(if show_review {
+            vec![
+                Constraint::Min(1),          // main area
+                Constraint::Length(review_height), // review panel
+                Constraint::Length(1),        // status bar
+            ]
+        } else {
+            vec![
+                Constraint::Min(1),
+                Constraint::Length(1),
+            ]
+        })
         .split(f.area());
 
     let main_area = chunks[0];
-    let status_area = chunks[1];
+    let (review_area, status_area) = if show_review {
+        (chunks[1], chunks[2])
+    } else {
+        (Rect::default(), chunks[1])
+    };
 
     // Main area: file tree + diff view
     if app.file_tree.visible {
-        // Clear entire main area first to prevent ghost characters
         f.render_widget(Clear, main_area);
 
         let width_pct = app.config.diff.file_tree_width_percent;
@@ -58,6 +81,12 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         diff_view::draw(f, app, diff_area, diff_focused);
     } else {
         diff_view::draw(f, app, main_area, true);
+    }
+
+    // Review panel
+    if show_review {
+        let review_focused = matches!(app.mode, AppMode::ReviewFocus);
+        review_panel::draw(f, app, review_area, review_focused);
     }
 
     // Status bar

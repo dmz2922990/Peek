@@ -215,6 +215,28 @@ async fn execute_command(cmd: Command, tx: &mpsc::Sender<Message>) {
         Command::OpenFile { .. } => {
             // Handled in main loop before execute_command is called
         }
+        Command::StartReview { file, repo_root, config } => {
+            let tx = tx.clone();
+            tokio::spawn(async move {
+                let source_lines = peek::review::load_source_lines(&file.new_path, repo_root.as_deref());
+                let prompt = peek::review::build_prompt(&file, &source_lines, &config);
+                peek::review::log(&format!("=== FULL PROMPT ===\n{}\n=== END PROMPT ===", prompt));
+                match peek::review::call_api(prompt, &config).await {
+                    Ok(body) => {
+                        peek::review::log(&format!("RAW RESPONSE:\n{}", body));
+                        let comments = peek::review::parse_response(&body);
+                        peek::review::log(&format!("PARSED {} comments", comments.len()));
+                        let _ = tx.send(Message::ReviewResult {
+                            path: file.new_path.clone(),
+                            comments,
+                        }).await;
+                    }
+                    Err(e) => {
+                        let _ = tx.send(Message::ReviewError(e.to_string())).await;
+                    }
+                }
+            });
+        }
         Command::OpenUrl(branch) => {
             let tx = tx.clone();
             tokio::spawn(async move {

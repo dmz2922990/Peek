@@ -296,14 +296,14 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
 }
 
 /// Build all rendered lines with syntax highlighting. Called only on cache miss.
-fn build_lines(app: &App) -> (Vec<Line<'static>>, Vec<Option<(usize, Option<usize>)>>, Vec<(usize, usize)>) {
+fn build_lines(app: &App) -> (Vec<Line<'static>>, Vec<Option<(usize, Option<usize>, Option<usize>)>>, Vec<(usize, usize)>) {
     let file = app.current_file().or_else(|| app.diff_data.first());
     let Some(file) = file else {
         return (Vec::new(), Vec::new(), Vec::new());
     };
 
     let mut lines: Vec<Line> = Vec::new();
-    let mut line_map: Vec<Option<(usize, Option<usize>)>> = Vec::new();
+    let mut line_map: Vec<Option<(usize, Option<usize>, Option<usize>)>> = Vec::new();
     let mut fold_positions: Vec<(usize, usize)> = Vec::new();
 
     // File header
@@ -342,7 +342,7 @@ fn build_lines(app: &App) -> (Vec<Line<'static>>, Vec<Option<(usize, Option<usiz
                 for line_no in prev_hunk_end..current_hunk_start {
                     if let Some(content) = get_source_line(&source_lines, line_no) {
                         lines.push(make_expanded_context_line(&content, line_no, line_no, &mut highlighter));
-                        line_map.push(Some((hunk_idx, None)));
+                        line_map.push(Some((hunk_idx, None, Some(line_no))));
                     }
                 }
             } else {
@@ -353,7 +353,7 @@ fn build_lines(app: &App) -> (Vec<Line<'static>>, Vec<Option<(usize, Option<usiz
                     let line_no = prev_hunk_end + i;
                     if let Some(content) = get_source_line(&source_lines, line_no) {
                         lines.push(make_expanded_context_line(&content, line_no, line_no, &mut highlighter));
-                        line_map.push(Some((hunk_idx, None)));
+                        line_map.push(Some((hunk_idx, None, Some(line_no))));
                     }
                 }
 
@@ -380,7 +380,7 @@ fn build_lines(app: &App) -> (Vec<Line<'static>>, Vec<Option<(usize, Option<usiz
                     let line_no = current_hunk_start - up_count + i;
                     if let Some(content) = get_source_line(&source_lines, line_no) {
                         lines.push(make_expanded_context_line(&content, line_no, line_no, &mut highlighter));
-                        line_map.push(Some((hunk_idx, None)));
+                        line_map.push(Some((hunk_idx, None, Some(line_no))));
                     }
                 }
             }
@@ -400,14 +400,19 @@ fn build_lines(app: &App) -> (Vec<Line<'static>>, Vec<Option<(usize, Option<usiz
 
         for (line_idx, dl) in hunk.lines.iter().enumerate() {
             lines.push(make_diff_line(dl, &mut highlighter));
-            line_map.push(Some((hunk_idx, Some(line_idx))));
+            let new_line = match dl {
+                DiffLine::Context { new_line, .. } => Some(*new_line),
+                DiffLine::Add { new_line, .. } => Some(*new_line),
+                _ => None,
+            };
+            line_map.push(Some((hunk_idx, Some(line_idx), new_line)));
         }
 
         // Fold / expanded context after last hunk
         if hunk_idx == file.hunks.len() - 1 {
             let after_start = hunk.new_start + hunk.new_count;
             let total_file_lines = source_lines.len();
-            let tail_gap = total_file_lines.saturating_sub(after_start);
+            let tail_gap = total_file_lines.saturating_sub(after_start - 1);
 
             if tail_gap > 0 {
                 let tail_extra = expanded_folds.get(&usize::MAX).copied().unwrap_or(0);
@@ -417,7 +422,7 @@ fn build_lines(app: &App) -> (Vec<Line<'static>>, Vec<Option<(usize, Option<usiz
                         let line_no = after_start + offset;
                         if let Some(content) = get_source_line(&source_lines, line_no) {
                             lines.push(make_expanded_context_line(&content, line_no, line_no, &mut highlighter));
-                            line_map.push(Some((hunk_idx, None)));
+                            line_map.push(Some((hunk_idx, None, Some(line_no))));
                         }
                     }
                     let remaining = tail_gap.saturating_sub(expand_count);

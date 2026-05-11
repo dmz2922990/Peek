@@ -35,8 +35,18 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
         ));
     }
 
+    if app.review.reviewing {
+        let filename = app.current_file()
+            .map(|f| f.new_path.display().to_string())
+            .unwrap_or_default();
+        spans.push(Span::styled(
+            format!(" Reviewing {}... ", filename),
+            Style::default().fg(theme::YELLOW).add_modifier(ratatui::style::Modifier::BOLD),
+        ));
+    }
+
     let hint = match app.mode {
-        _ => " q:quit j/k:scroll =/-:ctx +/_:all ctx n/N:hunk c:commit p:push o:PR /:find y:copy v:sel",
+        _ => " q:quit j/k:scroll =/-:ctx +/_:all ctx n/N:hunk R:review r:refresh c:commit p:push /:find",
     };
     spans.push(Span::styled(hint.to_string(), Style::default().fg(theme::TEXT_SECONDARY)));
 

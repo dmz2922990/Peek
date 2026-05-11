@@ -7,6 +7,60 @@ pub struct Config {
     pub keybindings: Keybindings,
     #[serde(default)]
     pub diff: DiffConfig,
+    #[serde(default)]
+    pub review: ReviewConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReviewConfig {
+    #[serde(default)]
+    pub api_key: String,
+    #[serde(default = "default_review_model")]
+    pub model: String,
+    #[serde(default = "default_review_base_url")]
+    pub base_url: String,
+    #[serde(default = "default_review_max_tokens")]
+    pub max_tokens: u32,
+    #[serde(default = "default_review_context_lines")]
+    pub context_lines: ReviewContextLines,
+    #[serde(default = "default_review_language")]
+    pub language: String,
+    #[serde(default)]
+    pub prompt: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(untagged)]
+pub enum ReviewContextLines {
+    Number(usize),
+    Full(String),
+}
+
+impl Default for ReviewConfig {
+    fn default() -> Self {
+        Self {
+            api_key: String::new(),
+            model: default_review_model(),
+            base_url: default_review_base_url(),
+            max_tokens: default_review_max_tokens(),
+            context_lines: default_review_context_lines(),
+            language: default_review_language(),
+            prompt: None,
+        }
+    }
+}
+
+impl ReviewContextLines {
+    pub fn is_full(&self) -> bool {
+        matches!(self, ReviewContextLines::Full(s) if s.to_lowercase() == "full")
+    }
+
+    pub fn lines(&self) -> Option<usize> {
+        match self {
+            ReviewContextLines::Number(n) => Some(*n),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -60,6 +114,7 @@ impl Default for Config {
         Self {
             keybindings: Keybindings::default(),
             diff: DiffConfig::default(),
+            review: ReviewConfig::default(),
         }
     }
 }
@@ -117,6 +172,11 @@ fn default_diff_target_switch() -> String { "S".into() }
 fn default_context_lines() -> usize { 3 }
 fn default_file_tree_width_percent() -> u16 { 30 }
 fn default_file_tree_position() -> String { "left".into() }
+fn default_review_model() -> String { "claude-sonnet-4-20250514".into() }
+fn default_review_base_url() -> String { "https://api.anthropic.com".into() }
+fn default_review_max_tokens() -> u32 { 16384 }
+fn default_review_context_lines() -> ReviewContextLines { ReviewContextLines::Number(10) }
+fn default_review_language() -> String { "zh".into() }
 
 pub fn config_path() -> PathBuf {
     dirs_home().join(".config").join("review-helper").join("config.toml")
@@ -194,6 +254,16 @@ pub const CONFIG_ENTRIES: &[(&str, &str)] = &[
     ("file_tree_position", "File tree position"),
 ];
 
+pub const REVIEW_CONFIG_ENTRIES: &[(&str, &str)] = &[
+    ("api_key", "API Key"),
+    ("model", "Model"),
+    ("base_url", "Base URL"),
+    ("max_tokens", "Max Tokens"),
+    ("context_lines", "Context Lines"),
+    ("language", "Language"),
+    ("prompt", "Custom Prompt"),
+];
+
 impl DiffConfig {
     pub fn get_entry(&self, index: usize) -> Option<String> {
         match index {
@@ -239,4 +309,71 @@ fn dirs_home() -> PathBuf {
         .or_else(|_| std::env::var("USERPROFILE"))
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from("."))
+}
+
+impl ReviewConfig {
+    pub fn effective_api_key(&self) -> String {
+        std::env::var("PEEK_API_KEY")
+            .unwrap_or_else(|_| self.api_key.clone())
+    }
+
+    pub fn get_entry(&self, index: usize) -> Option<String> {
+        match index {
+            0 => Some(if self.api_key.is_empty() { String::new() } else { "*".repeat(self.api_key.len()) }),
+            1 => Some(self.model.clone()),
+            2 => Some(self.base_url.clone()),
+            3 => Some(self.max_tokens.to_string()),
+            4 => Some(match &self.context_lines {
+                ReviewContextLines::Number(n) => n.to_string(),
+                ReviewContextLines::Full(s) => s.clone(),
+            }),
+            5 => Some(self.language.clone()),
+            6 => Some(self.prompt.clone().unwrap_or_default()),
+            _ => None,
+        }
+    }
+
+    pub fn get_entry_raw(&self, index: usize) -> Option<String> {
+        match index {
+            0 => Some(self.api_key.clone()),
+            1 => Some(self.model.clone()),
+            2 => Some(self.base_url.clone()),
+            3 => Some(self.max_tokens.to_string()),
+            4 => Some(match &self.context_lines {
+                ReviewContextLines::Number(n) => n.to_string(),
+                ReviewContextLines::Full(s) => s.clone(),
+            }),
+            5 => Some(self.language.clone()),
+            6 => Some(self.prompt.clone().unwrap_or_default()),
+            _ => None,
+        }
+    }
+
+    pub fn set_entry(&mut self, index: usize, value: String) -> bool {
+        match index {
+            0 => self.api_key = value,
+            1 => self.model = value,
+            2 => self.base_url = value,
+            3 => {
+                if let Ok(n) = value.parse::<u32>() {
+                    self.max_tokens = n.max(5000);
+                } else {
+                    return false;
+                }
+            }
+            4 => {
+                if value.to_lowercase() == "full" {
+                    self.context_lines = ReviewContextLines::Full("full".into());
+                } else if let Ok(n) = value.parse::<usize>() {
+                    self.context_lines = ReviewContextLines::Number(n);
+                } else {
+                    return false;
+                }
+            }
+            5 => self.language = value,
+            6 => self.prompt = if value.is_empty() { None } else { Some(value) },
+            _ => return false,
+        }
+        true
+    }
 }
