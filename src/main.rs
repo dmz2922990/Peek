@@ -56,16 +56,16 @@ async fn main() -> Result<()> {
     // Channel for async results
     let (tx, mut rx) = mpsc::channel::<Message>(100);
 
-    // Start filesystem watcher for auto-reload
-    let watch_path = app.repo_root.clone()
-        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
-    let _watcher_guard = peek::watcher::start_watcher(
-        tx.clone(),
-        watch_path,
-    ).ok();
-
-    // Spawn initial diff load
-    spawn_diff_load(tx.clone(), app.diff_view.mode.clone());
+    // Only start watcher and load diff when inside a git repo
+    let _watcher_guard = if app.repo_root.is_some() {
+        let watch_path = app.repo_root.clone().unwrap();
+        let guard = peek::watcher::start_watcher(tx.clone(), watch_path).ok();
+        spawn_diff_load(tx.clone(), app.diff_view.mode.clone());
+        guard
+    } else {
+        app.diff_view.status_message = Some("Not a git repository. Run peek inside a git repo.".into());
+        None
+    };
 
     // Main loop
     loop {

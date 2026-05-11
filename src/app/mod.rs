@@ -55,7 +55,7 @@ pub fn update(app: &mut App, msg: Message) -> Command {
             Command::None
         }
         Message::FileChanged => {
-            if matches!(app.mode, AppMode::GitCommit | AppMode::GitPush | AppMode::Help) {
+            if app.repo_root.is_none() || matches!(app.mode, AppMode::GitCommit | AppMode::GitPush | AppMode::Help) {
                 Command::None
             } else {
                 app.review.cache.clear();
