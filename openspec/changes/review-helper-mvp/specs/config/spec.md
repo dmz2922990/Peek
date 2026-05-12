@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Load TOML configuration
-The system SHALL load configuration from `~/.config/review-helper/config.toml` on startup, using `serde` + `toml` for parsing.
+The system SHALL load configuration from `~/.config/peek/config.toml` on startup, using `serde` + `toml` for parsing.
 
 #### Scenario: Load valid config file
 - **WHEN** a valid TOML config file exists at the config path

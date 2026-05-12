@@ -126,7 +126,7 @@ peek --version
 
 ## 配置
 
-配置文件路径：`~/.config/review-helper/config.toml`
+配置文件路径：`~/.config/peek/config.toml`
 
 ### 按键重映射
 

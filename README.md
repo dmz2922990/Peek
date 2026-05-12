@@ -126,7 +126,7 @@ peek --version
 
 ## Configuration
 
-Config file: `~/.config/review-helper/config.toml`
+Config file: `~/.config/peek/config.toml`
 
 ### Key Remapping
 

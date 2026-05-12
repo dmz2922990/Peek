@@ -7,7 +7,7 @@
 ## 2. Config System
 
 - [x] 2.1 Implement `Config`, `Keybindings`, `DiffConfig` structs in `src/config/types.rs` with serde derive and Default impl
-- [x] 2.2 Implement `Config::load()` in `src/config/mod.rs` that reads `~/.config/review-helper/config.toml`, falls back to defaults on missing/invalid file
+- [x] 2.2 Implement `Config::load()` in `src/config/mod.rs` that reads `~/.config/peek/config.toml`, falls back to defaults on missing/invalid file
 - [x] 2.3 Write tests for config loading: valid TOML, missing file, invalid TOML, partial override
 
 ## 3. Diff Data Types

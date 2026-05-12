@@ -179,7 +179,7 @@ fn default_review_context_lines() -> ReviewContextLines { ReviewContextLines::Nu
 fn default_review_language() -> String { "zh".into() }
 
 pub fn config_path() -> PathBuf {
-    dirs_home().join(".config").join("review-helper").join("config.toml")
+    dirs_home().join(".config").join("peek").join("config.toml")
 }
 
 pub const KEYBINDING_ENTRIES: &[(&str, &str)] = &[

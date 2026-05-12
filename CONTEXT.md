@@ -28,7 +28,7 @@ Diff view feature that allows expanding/collapsing surrounding lines around chan
 - **Function Name Detection**: From git diff hunk header (`@@ ... @@ function_name`).
 - **Smart Copy**: Markdown block format (`📄 file:lines → function()` + fenced diff code block). No in-app AI interaction. Users paste into external AI tools.
 - **File Editing**: L2 embedded editor — multi-line editing with cursor, insert, delete, copy/paste, search/replace. Built on `tui-textarea`. Syntax highlighting as later enhancement.
-- **Configuration**: TOML format at `~/.config/review-helper/config.toml`. Covers keybindings and diff preferences. Parsed via `serde` + `toml`.
+- **Configuration**: TOML format at `~/.config/peek/config.toml`. Covers keybindings and diff preferences. Parsed via `serde` + `toml`.
 - **Distribution**: crates.io (`cargo install`) + GitHub Release cross-platform binaries (Mac/Linux/Windows). CI via GitHub Actions.
 
 ## Out of Scope

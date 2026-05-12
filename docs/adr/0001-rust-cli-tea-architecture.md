@@ -18,7 +18,7 @@ Reference implementation: Warp's built-in Code Review feature (Rust, TEA pattern
 4. **No in-app AI** — Instead of embedding AI, we provide "smart copy" that enriches clipboard content with file path, line numbers, and function name in Markdown format. Users paste into their preferred AI tool.
 5. **Self-parse git diff stdout** — Custom parser for `git diff` output. Context expansion reads source files independently.
 6. **L2 embedded editor** — Multi-line editing via `tui-textarea` crate, not a full editor.
-7. **TOML configuration** — `~/.config/review-helper/config.toml` via `serde` + `toml`.
+7. **TOML configuration** — `~/.config/peek/config.toml` via `serde` + `toml`.
 
 ## Consequences
 
